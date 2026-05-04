@@ -101,8 +101,13 @@ export function useSpeechFollow(opts: {
 
     rec.onstart = () => setListening(true);
     rec.onend   = () => {
-      setListening(false);
-      if (enabled) try { rec.start(); } catch { /* noop */ }
+      if (!enabled) {
+        setListening(false);
+        return;
+      }
+      // Restart silently — don't flip listening→false→true which causes the
+      // mic icon to flicker every time Chrome ends a speech segment.
+      try { rec.start(); } catch { setListening(false); }
     };
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;

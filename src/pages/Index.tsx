@@ -11,7 +11,8 @@ import {
 import { isSpeechSupported, useSpeechFollow } from "@/hooks/use-speech-follow";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { PanelLeftClose, PanelLeftOpen, Sparkles } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Menu, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -21,7 +22,7 @@ const Index = () => {
   const [playing, setPlaying] = useState(false);
   const [followIdx, setFollowIdx] = useState<number | null>(null);
   const [isFs, setIsFs] = useState(false);
-  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
+  const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -158,72 +159,72 @@ const Index = () => {
 
   return (
     <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <header className="border-b border-border/40 px-6 py-4">
-        <div className="flex items-center gap-3">
+      <header className="border-b border-border/40 px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Mobile library button */}
+          <Sheet open={isLibraryOpen} onOpenChange={setIsLibraryOpen}>
+            <SheetTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                className="lg:hidden"
+                title="Scripts"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-80 p-0">
+              <div className="flex h-full flex-col gap-3 overflow-hidden p-6 pt-4">
+                <ScriptLibrary
+                  scripts={scripts}
+                  activeId={active.id}
+                  onSelect={(id) => {
+                    setActiveId(id);
+                    setIsLibraryOpen(false);
+                  }}
+                  onCreate={createScript}
+                  onDelete={deleteScript}
+                  onRename={renameActive}
+                  onImport={importFile}
+                  onExport={exportActive}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
+
           <Sparkles className="h-5 w-5 text-primary" />
-          <h1 className="font-serif text-2xl tracking-tight">
+          <h1 className="font-serif text-xl sm:text-2xl tracking-tight">
             Pro<span className="text-primary">ompter</span>
           </h1>
-          <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+          <span className="hidden sm:inline ml-2 sm:ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {speechSupported ? "Speech-aware teleprompter" : "Teleprompter"}
           </span>
-          <div className="ml-auto flex items-center gap-4 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
-            <span><span className="text-primary tabular-nums">{wordCount}</span> words</span>
-            <span>~<span className="text-primary tabular-nums">{minutes}</span> min</span>
+          <div className="ml-auto flex items-center gap-2 sm:gap-4 font-mono text-[10px] sm:text-[11px] uppercase tracking-wider text-muted-foreground">
+            <span className="hidden xs:inline"><span className="text-primary tabular-nums">{wordCount}</span> words</span>
+            <span className="hidden xs:inline">~<span className="text-primary tabular-nums">{minutes}</span> min</span>
             <span className="hidden md:inline">SPACE play · ←→ seek · ↑↓ speed · F fullscreen · M mirror · R reset</span>
           </div>
         </div>
       </header>
 
-      <div
-        className={
-          "grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:p-6 " +
-          (isLibraryCollapsed
-            ? "lg:grid-cols-[72px_minmax(0,1fr)]"
-            : "lg:grid-cols-[280px_minmax(0,1fr)]")
-        }
-      >
-        {/* Sidebar */}
-        <aside
-          className={
-            "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/60 transition-all duration-200 " +
-            (isLibraryCollapsed ? "p-2" : "p-4")
-          }
-        >
-          <div className={"flex items-center " + (isLibraryCollapsed ? "justify-center" : "justify-end")}>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8 shrink-0"
-              onClick={() => setIsLibraryCollapsed((collapsed) => !collapsed)}
-              aria-label={isLibraryCollapsed ? "Expand library" : "Collapse library"}
-              title={isLibraryCollapsed ? "Expand library" : "Collapse library"}
-            >
-              {isLibraryCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </Button>
-          </div>
-          {isLibraryCollapsed ? (
-            <div className="flex flex-1 items-center justify-center">
-              <span className="font-mono text-[10px] uppercase tracking-[0.35em] text-muted-foreground [writing-mode:vertical-rl]">
-                Library
-              </span>
-            </div>
-          ) : (
-            <ScriptLibrary
-              scripts={scripts}
-              activeId={active.id}
-              onSelect={setActiveId}
-              onCreate={createScript}
-              onDelete={deleteScript}
-              onRename={renameActive}
-              onImport={importFile}
-              onExport={exportActive}
-            />
-          )}
+      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:p-6">
+
+        {/* Desktop Sidebar */}
+        <aside className="hidden min-h-0 w-72 flex-col gap-3 overflow-hidden rounded-2xl border border-border/40 bg-card/60 p-4 lg:flex">
+          <ScriptLibrary
+            scripts={scripts}
+            activeId={active.id}
+            onSelect={setActiveId}
+            onCreate={createScript}
+            onDelete={deleteScript}
+            onRename={renameActive}
+            onImport={importFile}
+            onExport={exportActive}
+          />
         </aside>
 
         {/* Workspace */}
-        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto xl:overflow-hidden">
+        <section className="flex min-h-0 w-full min-w-0 flex-col gap-4 overflow-y-auto xl:overflow-hidden">
           <ControlBar
             settings={settings}
             playing={playing}
