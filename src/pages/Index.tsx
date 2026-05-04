@@ -162,7 +162,7 @@ const Index = () => {
         <div className="flex items-center gap-3">
           <Sparkles className="h-5 w-5 text-primary" />
           <h1 className="font-serif text-2xl tracking-tight">
-            Footlight <span className="text-primary">Prompter</span>
+            Pro<span className="text-primary">ompter</span>
           </h1>
           <span className="ml-3 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
             {speechSupported ? "Speech-aware teleprompter" : "Teleprompter"}
