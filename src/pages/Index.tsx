@@ -36,11 +36,21 @@ const Index = () => {
   useEffect(() => { setFollowIdx(null); }, [activeId]);
 
   const speechSupported = isSpeechSupported();
-  useSpeechFollow({
+  const { listening, interim, error: speechError } = useSpeechFollow({
     enabled: settings.followMode,
     scriptText: active?.body ?? "",
     onWordIndex: setFollowIdx,
   });
+
+  useEffect(() => {
+    if (speechError) toast.error(`Mic: ${speechError}`);
+  }, [speechError]);
+
+  useEffect(() => {
+    if (settings.followMode && !speechSupported) {
+      toast.error("Speech recognition not supported in this browser. Try Chrome or Edge.");
+    }
+  }, [settings.followMode, speechSupported]);
 
   // Fullscreen API
   useEffect(() => {
@@ -174,9 +184,16 @@ const Index = () => {
             isFullscreen={isFs}
             onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
             speechSupported={speechSupported}
-            listening={settings.followMode}
+            listening={listening}
           />
-
+          {settings.followMode && (
+            <div className="rounded-lg border border-primary/20 bg-card/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+              <span className={listening ? "text-primary" : "text-amber-500"}>
+                {listening ? "● LISTENING" : "○ MIC IDLE"}
+              </span>
+              <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
+            </div>
+          )}
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             {/* Stage */}
             <div
