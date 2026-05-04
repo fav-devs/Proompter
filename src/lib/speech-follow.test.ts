@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { advanceWordByWord, normalizeSpeech, wordSimilarity } from "@/lib/speech-follow";
+import {
+  advanceWordByWord,
+  findNearbyCursorAnchor,
+  normalizeSpeech,
+  tryMatchWord,
+  wordSimilarity,
+} from "@/lib/speech-follow";
 
 const script = normalizeSpeech(`
   Welcome everyone to the show. Today we are going to walk through the product roadmap
@@ -22,6 +28,18 @@ describe("wordSimilarity", () => {
     expect(wordSimilarity("to", "to")).toBe(1);
   });
   it("unrelated words → 0", () => expect(wordSimilarity("roadmap", "elephant")).toBe(0));
+});
+
+describe("tryMatchWord", () => {
+  it("allows a signal word to skip one dropped script word during interim", () => {
+    const start = after("we");
+    expect(tryMatchWord(script, start, "going")).toBe(after("going"));
+  });
+
+  it("does not let a signal word jump two script words during interim", () => {
+    const start = after("we");
+    expect(tryMatchWord(script, start, "walk")).toBeNull();
+  });
 });
 
 describe("advanceWordByWord", () => {
@@ -82,5 +100,21 @@ describe("advanceWordByWord", () => {
     expect(cursor).toBe(after("everyone"));
     cursor = advanceWordByWord(script, cursor, normalizeSpeech("to the show today"));
     expect(cursor).toBe(after("today"));
+  });
+});
+
+describe("findNearbyCursorAnchor", () => {
+  it("corrects a cursor that overshot by two words", () => {
+    const visualCursor = after("walk") + 2;
+    expect(findNearbyCursorAnchor(script, visualCursor, "walk", 2)).toBe(after("walk"));
+  });
+
+  it("corrects a cursor that is behind by two words", () => {
+    const visualCursor = after("walk") - 2;
+    expect(findNearbyCursorAnchor(script, visualCursor, "walk", 2)).toBe(after("walk"));
+  });
+
+  it("returns null when the last word is outside the correction window", () => {
+    expect(findNearbyCursorAnchor(script, after("today"), "team", 2)).toBeNull();
   });
 });

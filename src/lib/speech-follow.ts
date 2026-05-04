@@ -139,8 +139,9 @@ const tryResync = (
  * Try to match a single spoken word at/near `cursor` in the script.
  * Used for live interim word-by-word streaming.
  *
- * Signal words may skip up to 2 script positions to absorb a dropped word from
- * STT. Stop words must match exactly so they don't hop over content words.
+ * Signal words may skip up to 1 script position to absorb a single dropped word
+ * from STT without letting one interim token jump multiple words ahead.
+ * Stop words must match exactly so they don't hop over content words.
  *
  * Returns the new cursor (idx + 1) if matched, null if not.
  */
@@ -151,7 +152,7 @@ export const tryMatchWord = (
   skipLimit?: number,
 ): number | null => {
   if (!spokenWord) return null;
-  const limit = skipLimit ?? (isSignalWord(spokenWord) ? 2 : 0);
+  const limit = skipLimit ?? (isSignalWord(spokenWord) ? 1 : 0);
   for (let skip = 0; skip <= limit; skip++) {
     const idx = cursor + skip;
     if (idx >= scriptWords.length) break;
@@ -160,6 +161,45 @@ export const tryMatchWord = (
     }
   }
   return null;
+};
+
+/**
+ * Verify that the last spoken word still lines up with the live cursor.
+ * Returns the cursor position immediately after the matched word when that
+ * word exists within a small +/- window around the current cursor.
+ */
+export const findNearbyCursorAnchor = (
+  scriptWords: string[],
+  cursor: number,
+  spokenWord: string,
+  radius = 2,
+): number | null => {
+  if (!spokenWord || !scriptWords.length) return null;
+
+  const minCursor = Math.max(1, cursor - radius);
+  const maxCursor = Math.min(scriptWords.length, cursor + radius);
+
+  let bestCursor: number | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  let bestScore = 0;
+
+  for (let candidateCursor = minCursor; candidateCursor <= maxCursor; candidateCursor++) {
+    const score = wordSimilarity(scriptWords[candidateCursor - 1], spokenWord);
+    if (score < MATCH_THRESHOLD) continue;
+
+    const distance = Math.abs(candidateCursor - cursor);
+    if (
+      bestCursor === null ||
+      distance < bestDistance ||
+      (distance === bestDistance && score > bestScore)
+    ) {
+      bestCursor = candidateCursor;
+      bestDistance = distance;
+      bestScore = score;
+    }
+  }
+
+  return bestCursor;
 };
 
 /**

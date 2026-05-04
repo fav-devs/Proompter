@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { advanceWordByWord, normalizeSpeech, tryMatchWord } from "@/lib/speech-follow";
+import {
+  advanceWordByWord,
+  findNearbyCursorAnchor,
+  normalizeSpeech,
+  tryMatchWord,
+} from "@/lib/speech-follow";
 
 interface SpeechRecognitionAlternativeLike { transcript: string }
 interface SpeechRecognitionResultLike {
@@ -100,14 +105,20 @@ export function useSpeechFollow(opts: {
     rec.lang           = navigator.language || "en-US";
 
     rec.onstart = () => setListening(true);
+    let restartTimer: ReturnType<typeof setTimeout> | null = null;
     rec.onend   = () => {
       if (!enabled) {
         setListening(false);
         return;
       }
-      // Restart silently — don't flip listening→false→true which causes the
-      // mic icon to flicker every time Chrome ends a speech segment.
-      try { rec.start(); } catch { setListening(false); }
+      // Chrome needs a brief gap between sessions — calling start() synchronously
+      // inside onend is sometimes silently ignored, leaving the mic "listening"
+      // but not actually capturing. A short delay lets Chrome fully reset.
+      // We intentionally do NOT flip listening=false here to keep the icon stable.
+      restartTimer = setTimeout(() => {
+        restartTimer = null;
+        try { rec.start(); } catch { setListening(false); }
+      }, 150);
     };
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
@@ -131,11 +142,21 @@ export function useSpeechFollow(opts: {
           );
           committedRef.current = nextCommitted;
 
-          // Only snap visual to committed for large resync jumps (e.g. speaker
-          // skipped a section). For normal speech the interim already advanced
-          // visual word-by-word; emitting here would add an unwanted extra word
-          // at the moment the speaker pauses.
-          if (nextCommitted > visualRef.current + 2) {
+          // First verify the live cursor against the LAST confirmed STT word.
+          // This fixes the common case where interim overshot by 1-2 words:
+          // anchor the cursor back to the actual last spoken word instead of
+          // waiting for a larger committed/visual drift.
+          const lastSpokenWord = spokenWords[spokenWords.length - 1];
+          const anchoredCursor = findNearbyCursorAnchor(
+            wordsRef.current,
+            visualRef.current,
+            lastSpokenWord,
+            2,
+          );
+
+          if (anchoredCursor !== null && anchoredCursor !== visualRef.current) {
+            emitVisual(anchoredCursor);
+          } else if (Math.abs(nextCommitted - visualRef.current) > 2) {
             emitVisual(nextCommitted);
           }
 
@@ -161,22 +182,6 @@ export function useSpeechFollow(opts: {
         if (next !== null) emitVisual(next);
       }
 
-      // ── Anchor verification ───────────────────────────────────────────────
-      // The LAST word the STT recognised is the most reliable position anchor.
-      // After processing the delta, verify the cursor stopped right after it.
-      // If it didn't (the word slipped by because the cursor was behind earlier
-      // words in the same delta), give it one more pass from the updated cursor.
-      if (currWords.length > prevLen) {
-        const lastWord = currWords[currWords.length - 1];
-        const curPos   = visualRef.current;
-        const atCursor = wordsRef.current[curPos - 1];
-        if (!atCursor || wordSimilarity(atCursor, lastWord) < MATCH_THRESHOLD) {
-          // Last word didn't land — try again from where the cursor is now.
-          const anchor = tryMatchWord(wordsRef.current, curPos, lastWord);
-          if (anchor !== null) emitVisual(anchor);
-        }
-      }
-
       prevInterimLenRef.current = currWords.length;
     };
 
@@ -184,7 +189,9 @@ export function useSpeechFollow(opts: {
     try { rec.start(); } catch { /* noop */ }
 
     return () => {
-      try { rec.onend = null; rec.stop(); } catch { /* noop */ }
+      if (restartTimer !== null) clearTimeout(restartTimer);
+      rec.onend = null;
+      try { rec.stop(); } catch { /* noop */ }
       recRef.current = null;
     };
   }, [enabled, emitVisual]);
