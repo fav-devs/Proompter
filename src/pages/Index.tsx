@@ -194,19 +194,6 @@ const Index = () => {
               <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
             </div>
           )}
-          <div className="hidden">
-            <ControlBar
-            settings={settings}
-            playing={playing}
-            onPlay={() => setPlaying((p) => !p)}
-            onReset={() => { setPlaying(false); setFollowIdx(null); setResetTick((t) => t + 1); }}
-            onFullscreen={toggleFs}
-            isFullscreen={isFs}
-            onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
-            speechSupported={speechSupported}
-            listening={listening}
-          />
-
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             {/* Stage */}
             <div
