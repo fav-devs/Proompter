@@ -184,7 +184,27 @@ const Index = () => {
             isFullscreen={isFs}
             onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
             speechSupported={speechSupported}
-            listening={settings.followMode}
+            listening={listening}
+          />
+          {settings.followMode && (
+            <div className="rounded-lg border border-primary/20 bg-card/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
+              <span className={listening ? "text-primary" : "text-amber-500"}>
+                {listening ? "● LISTENING" : "○ MIC IDLE"}
+              </span>
+              <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
+            </div>
+          )}
+          <div className="hidden">
+            <ControlBar
+            settings={settings}
+            playing={playing}
+            onPlay={() => setPlaying((p) => !p)}
+            onReset={() => { setPlaying(false); setFollowIdx(null); setResetTick((t) => t + 1); }}
+            onFullscreen={toggleFs}
+            isFullscreen={isFs}
+            onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+            speechSupported={speechSupported}
+            listening={listening}
           />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
