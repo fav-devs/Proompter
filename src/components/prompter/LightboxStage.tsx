@@ -25,6 +25,26 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
   }, [text]);
 
   useEffect(() => {
+    const onSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ direction: "backward" | "forward" }>).detail;
+      const container = containerRef.current;
+      const track = trackRef.current;
+      if (!detail || !container || !track) return;
+
+      const max = Math.max(0, track.scrollWidth - container.clientWidth * 0.5);
+      const step = container.clientWidth * 0.28;
+      const direction = detail.direction === "backward" ? -1 : 1;
+      const nextOffset = Math.min(max, Math.max(0, targetRef.current + step * direction));
+
+      targetRef.current = nextOffset;
+      setOffset(nextOffset);
+    };
+
+    window.addEventListener("prompter:seek", onSeek);
+    return () => window.removeEventListener("prompter:seek", onSeek);
+  }, []);
+
+  useEffect(() => {
     let raf = 0;
     const tick = (ts: number) => {
       if (lastTs.current == null) lastTs.current = ts;
@@ -35,7 +55,7 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
       if (container && track) {
         const max = Math.max(0, track.scrollWidth - container.clientWidth * 0.5);
         if (settings.followMode && followWordIndex != null) {
-          const idx = Math.min(followWordIndex, words.length - 1);
+          const idx = Math.min(Math.max(0, followWordIndex - 1), words.length - 1);
           const el = wordRefs.current[idx];
           if (el) {
             const focus = container.clientWidth * 0.4;

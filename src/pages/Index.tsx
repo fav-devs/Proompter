@@ -11,7 +11,7 @@ import {
 import { isSpeechSupported, useSpeechFollow } from "@/hooks/use-speech-follow";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Sparkles } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -21,6 +21,7 @@ const Index = () => {
   const [playing, setPlaying] = useState(false);
   const [followIdx, setFollowIdx] = useState<number | null>(null);
   const [isFs, setIsFs] = useState(false);
+  const [isLibraryCollapsed, setIsLibraryCollapsed] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -67,11 +68,18 @@ const Index = () => {
     }
   }, []);
 
+  const seekPrompter = useCallback((direction: "backward" | "forward") => {
+    setFollowIdx(null);
+    window.dispatchEvent(new CustomEvent("prompter:seek", { detail: { direction } }));
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "TEXTAREA" || (e.target as HTMLElement)?.tagName === "INPUT") return;
       if (e.code === "Space") { e.preventDefault(); setPlaying((p) => !p); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); seekPrompter("backward"); }
+      if (e.key === "ArrowRight") { e.preventDefault(); seekPrompter("forward"); }
       if (e.key === "ArrowUp") setSettings((s) => ({ ...s, speed: Math.min(240, s.speed + 5) }));
       if (e.key === "ArrowDown") setSettings((s) => ({ ...s, speed: Math.max(20, s.speed - 5) }));
       if (e.key.toLowerCase() === "f") toggleFs();
@@ -80,7 +88,7 @@ const Index = () => {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleFs]);
+  }, [seekPrompter, toggleFs]);
 
   // Reset trigger via remount key
   const [resetTick, setResetTick] = useState(0);
@@ -138,9 +146,18 @@ const Index = () => {
 
   const wordCount = active.body.split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.round(wordCount / 140));
+  const renderListeningBox = (className: string) =>
+    settings.followMode ? (
+      <div className={className}>
+        <span className={listening ? "text-primary" : "text-amber-500"}>
+          {listening ? "● LISTENING" : "○ MIC IDLE"}
+        </span>
+        <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
+      </div>
+    ) : null;
 
   return (
-    <main className="min-h-dvh bg-background text-foreground">
+    <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <header className="border-b border-border/40 px-6 py-4">
         <div className="flex items-center gap-3">
           <Sparkles className="h-5 w-5 text-primary" />
@@ -153,54 +170,81 @@ const Index = () => {
           <div className="ml-auto flex items-center gap-4 font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
             <span><span className="text-primary tabular-nums">{wordCount}</span> words</span>
             <span>~<span className="text-primary tabular-nums">{minutes}</span> min</span>
-            <span className="hidden md:inline">SPACE play · ↑↓ speed · F fullscreen · M mirror · R reset</span>
+            <span className="hidden md:inline">SPACE play · ←→ seek · ↑↓ speed · F fullscreen · M mirror · R reset</span>
           </div>
         </div>
       </header>
 
-      <div className="grid gap-4 p-4 lg:grid-cols-[280px_minmax(0,1fr)] lg:p-6">
+      <div
+        className={
+          "grid min-h-0 flex-1 gap-4 overflow-hidden p-4 lg:p-6 " +
+          (isLibraryCollapsed
+            ? "lg:grid-cols-[72px_minmax(0,1fr)]"
+            : "lg:grid-cols-[280px_minmax(0,1fr)]")
+        }
+      >
         {/* Sidebar */}
-        <aside className="rounded-2xl border border-border/40 bg-card/60 p-4 lg:h-[calc(100dvh-7rem)]">
-          <ScriptLibrary
-            scripts={scripts}
-            activeId={active.id}
-            onSelect={setActiveId}
-            onCreate={createScript}
-            onDelete={deleteScript}
-            onRename={renameActive}
-            onImport={importFile}
-            onExport={exportActive}
-          />
+        <aside
+          className={
+            "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-border/40 bg-card/60 transition-all duration-200 " +
+            (isLibraryCollapsed ? "p-2" : "p-4")
+          }
+        >
+          <div className={"flex items-center " + (isLibraryCollapsed ? "justify-center" : "justify-end")}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setIsLibraryCollapsed((collapsed) => !collapsed)}
+              aria-label={isLibraryCollapsed ? "Expand library" : "Collapse library"}
+              title={isLibraryCollapsed ? "Expand library" : "Collapse library"}
+            >
+              {isLibraryCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          </div>
+          {isLibraryCollapsed ? (
+            <div className="flex flex-1 items-center justify-center">
+              <span className="font-mono text-[10px] uppercase tracking-[0.35em] text-muted-foreground [writing-mode:vertical-rl]">
+                Library
+              </span>
+            </div>
+          ) : (
+            <ScriptLibrary
+              scripts={scripts}
+              activeId={active.id}
+              onSelect={setActiveId}
+              onCreate={createScript}
+              onDelete={deleteScript}
+              onRename={renameActive}
+              onImport={importFile}
+              onExport={exportActive}
+            />
+          )}
         </aside>
 
         {/* Workspace */}
-        <section className="flex min-w-0 flex-col gap-4">
+        <section className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto xl:overflow-hidden">
           <ControlBar
             settings={settings}
             playing={playing}
             onPlay={() => setPlaying((p) => !p)}
             onReset={() => { setPlaying(false); setFollowIdx(null); setResetTick((t) => t + 1); }}
+            onRewind={() => seekPrompter("backward")}
+            onAdvance={() => seekPrompter("forward")}
             onFullscreen={toggleFs}
             isFullscreen={isFs}
             onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
             speechSupported={speechSupported}
             listening={listening}
           />
-          {settings.followMode && (
-            <div className="rounded-lg border border-primary/20 bg-card/40 px-3 py-2 font-mono text-[11px] text-muted-foreground">
-              <span className={listening ? "text-primary" : "text-amber-500"}>
-                {listening ? "● LISTENING" : "○ MIC IDLE"}
-              </span>
-              <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
-            </div>
-          )}
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+          {renderListeningBox("rounded-lg border border-primary/20 bg-card/40 px-3 py-2 font-mono text-[11px] text-muted-foreground")}
+          <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.5fr)] xl:overflow-hidden">
             {/* Stage */}
             <div
               ref={stageWrapRef}
               className={
                 "relative bg-background " +
-                (isFs ? "h-dvh w-screen" : "h-[58dvh] min-h-[420px] rounded-2xl")
+                (isFs ? "h-dvh w-screen" : "min-h-[320px] overflow-hidden rounded-2xl xl:h-full xl:min-h-0")
               }
             >
               {settings.lightbox ? (
@@ -221,17 +265,34 @@ const Index = () => {
                 />
               )}
               {isFs && (
-                <button
-                  onClick={toggleFs}
-                  className="absolute right-4 top-4 z-20 rounded-md bg-card/70 px-3 py-1 font-mono text-xs uppercase tracking-wider text-muted-foreground backdrop-blur hover:text-primary"
-                >
-                  Exit
-                </button>
+                <>
+                  {renderListeningBox(
+                    "pointer-events-none absolute left-4 right-4 top-4 z-20 rounded-lg border border-primary/20 bg-card/70 px-3 py-2 font-mono text-[11px] text-muted-foreground backdrop-blur"
+                  )}
+                  <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center">
+                    <div className="pointer-events-auto max-w-full">
+                      <ControlBar
+                        settings={settings}
+                        playing={playing}
+                        onPlay={() => setPlaying((p) => !p)}
+                        onReset={() => { setPlaying(false); setFollowIdx(null); setResetTick((t) => t + 1); }}
+                        onRewind={() => seekPrompter("backward")}
+                        onAdvance={() => seekPrompter("forward")}
+                        onFullscreen={toggleFs}
+                        isFullscreen={isFs}
+                        onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
+                        speechSupported={speechSupported}
+                        listening={listening}
+                        singleRow
+                      />
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 
             {/* Editor */}
-            <div className="flex min-w-0 flex-col gap-2 rounded-2xl border border-border/40 bg-card/60 p-3">
+            <div className="flex min-h-[320px] min-w-0 flex-col gap-2 rounded-2xl border border-border/40 bg-card/60 p-3 xl:h-full xl:min-h-0">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">Script</span>
                 <span className="font-mono text-[10px] text-muted-foreground">{active.body.length} ch</span>
@@ -240,7 +301,7 @@ const Index = () => {
                 value={active.body}
                 onChange={(e) => updateBody(e.target.value)}
                 placeholder="Write or paste your script…"
-                className="min-h-[44dvh] resize-none border-border/30 bg-background/40 font-mono text-sm leading-relaxed focus-visible:ring-primary/50"
+                className="min-h-0 flex-1 resize-none border-border/30 bg-background/40 font-mono text-sm leading-relaxed focus-visible:ring-primary/50"
               />
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setPlaying(true)}>Play</Button>

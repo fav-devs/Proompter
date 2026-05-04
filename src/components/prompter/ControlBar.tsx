@@ -5,35 +5,62 @@ import { Label } from "@/components/ui/label";
 import type { Settings } from "@/lib/teleprompter-store";
 import {
   Play, Pause, RotateCcw, Maximize, Minimize, FlipHorizontal, FlipVertical,
-  Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal,
+  Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal, SkipBack, SkipForward,
 } from "lucide-react";
+
+type NumericSettingKey = "fontSize" | "lineHeight" | "speed";
 
 interface Props {
   settings: Settings;
   playing: boolean;
   onPlay: () => void;
   onReset: () => void;
+  onRewind: () => void;
+  onAdvance: () => void;
   onFullscreen: () => void;
   isFullscreen: boolean;
   onChange: (patch: Partial<Settings>) => void;
   speechSupported: boolean;
   listening: boolean;
+  singleRow?: boolean;
 }
 
 export function ControlBar({
-  settings, playing, onPlay, onReset, onFullscreen, isFullscreen,
-  onChange, speechSupported, listening,
+  settings, playing, onPlay, onReset, onRewind, onAdvance, onFullscreen, isFullscreen,
+  onChange, speechSupported, listening, singleRow = false,
 }: Props) {
-  const num = (k: keyof Settings, delta: number, min: number, max: number) => {
-    const v = Math.min(max, Math.max(min, (settings[k] as number) + delta));
-    onChange({ [k]: v } as any);
+  const num = (key: NumericSettingKey, delta: number, min: number, max: number) => {
+    const nextValue = Math.min(max, Math.max(min, settings[key] + delta));
+
+    if (key === "fontSize") {
+      onChange({ fontSize: nextValue });
+      return;
+    }
+
+    if (key === "lineHeight") {
+      onChange({ lineHeight: nextValue });
+      return;
+    }
+
+    onChange({ speed: nextValue });
   };
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/60 bg-card/80 px-3 py-2 backdrop-blur">
+    <div
+      className={
+        "flex items-center gap-3 rounded-xl border border-border/60 bg-card/80 px-3 py-2 backdrop-blur " +
+        (singleRow ? "inline-flex max-w-full flex-nowrap whitespace-nowrap" : "flex-wrap")
+      }
+    >
       <div className="flex items-center gap-1">
+        <Button size="sm" variant="ghost" onClick={onRewind} title="Rewind">
+          <SkipBack className="h-4 w-4" />
+        </Button>
         <Button size="sm" variant={playing ? "secondary" : "default"} onClick={onPlay}>
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           <span className="ml-1.5 font-mono text-xs">{playing ? "Pause" : "Play"}</span>
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onAdvance} title="Advance">
+          <SkipForward className="h-4 w-4" />
         </Button>
         <Button size="sm" variant="ghost" onClick={onReset} title="Reset">
           <RotateCcw className="h-4 w-4" />

@@ -31,6 +31,26 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
     targetRef.current = 0;
   }, [text]);
 
+  useEffect(() => {
+    const onSeek = (event: Event) => {
+      const detail = (event as CustomEvent<{ direction: "backward" | "forward" }>).detail;
+      const container = containerRef.current;
+      const content = contentRef.current;
+      if (!detail || !container || !content) return;
+
+      const max = Math.max(0, content.scrollHeight - container.clientHeight * 0.45);
+      const step = container.clientHeight * 0.28;
+      const direction = detail.direction === "backward" ? -1 : 1;
+      const nextOffset = Math.min(max, Math.max(0, targetRef.current + step * direction));
+
+      targetRef.current = nextOffset;
+      setOffset(nextOffset);
+    };
+
+    window.addEventListener("prompter:seek", onSeek);
+    return () => window.removeEventListener("prompter:seek", onSeek);
+  }, []);
+
   // Animation loop
   useEffect(() => {
     let raf = 0;
@@ -45,8 +65,8 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
         const max = Math.max(0, content.scrollHeight - container.clientHeight * 0.45);
 
         if (settings.followMode && followWordIndex != null) {
-          // align target so the followed word sits at ~38% from top
-          const idx = Math.min(followWordIndex, wordOnly.length - 1);
+          // center the currently matched word instead of the next word ahead
+          const idx = Math.min(Math.max(0, followWordIndex - 1), wordOnly.length - 1);
           let n = -1;
           let domIdx = -1;
           for (let i = 0; i < words.length; i++) {

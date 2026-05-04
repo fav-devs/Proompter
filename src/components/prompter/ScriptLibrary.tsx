@@ -20,7 +20,7 @@ export function ScriptLibrary({
 }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="font-serif text-lg tracking-tight">Library</h2>
         <div className="flex gap-1">
@@ -46,7 +46,7 @@ export function ScriptLibrary({
           </Button>
         </div>
       </div>
-      <div className="flex flex-col gap-1.5 overflow-y-auto pr-1">
+      <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
         {scripts.map((s) => {
           const active = s.id === activeId;
           return (
