@@ -1,47 +1,26 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  applyFollowTranscript,
-  createFollowProgressState,
-  normalizeSpeech,
-  type FollowProgressState,
-} from "@/lib/speech-follow";
+import { advanceWordByWord, normalizeSpeech, tryMatchWord } from "@/lib/speech-follow";
 
-interface SpeechRecognitionAlternativeLike {
-  transcript: string;
-}
-
+interface SpeechRecognitionAlternativeLike { transcript: string }
 interface SpeechRecognitionResultLike {
-  isFinal: boolean;
-  length: number;
+  isFinal: boolean; length: number;
   [index: number]: SpeechRecognitionAlternativeLike;
 }
-
 interface SpeechRecognitionResultListLike {
-  length: number;
-  [index: number]: SpeechRecognitionResultLike;
+  length: number; [index: number]: SpeechRecognitionResultLike;
 }
-
 interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: SpeechRecognitionResultListLike;
+  resultIndex: number; results: SpeechRecognitionResultListLike;
 }
-
-interface SpeechRecognitionErrorEventLike {
-  error: string;
-}
-
+interface SpeechRecognitionErrorEventLike { error: string }
 interface SpeechRecognitionLike {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
+  continuous: boolean; interimResults: boolean; lang: string;
   onstart: (() => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  start: () => void;
-  stop: () => void;
+  onend:   (() => void) | null;
+  onerror: ((e: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  start(): void; stop(): void;
 }
-
 interface SpeechRecognitionWindow extends Window {
   SpeechRecognition?: new () => SpeechRecognitionLike;
   webkitSpeechRecognition?: new () => SpeechRecognitionLike;
@@ -65,91 +44,135 @@ export function useSpeechFollow(opts: {
   onWordIndex: (index: number) => void;
 }) {
   const { enabled, scriptText, onWordIndex } = opts;
-  const recRef = useRef<SpeechRecognitionLike | null>(null);
+  const recRef   = useRef<SpeechRecognitionLike | null>(null);
   const wordsRef = useRef<string[]>([]);
-  const progressRef = useRef<FollowProgressState>(createFollowProgressState());
+
+  /**
+   * Two cursors:
+   *   committed — advanced only by final results (ground truth, never drifts)
+   *   visual    — streamed word-by-word from interim; snapped to committed on
+   *               each final (error correction)
+   */
+  const committedRef = useRef(0);
+  const visualRef    = useRef(0);
+
+  // How many words the previous interim event had (to detect new words).
+  const prevInterimLenRef = useRef(0);
+
   const [listening, setListening] = useState(false);
-  const [interim, setInterim] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [interim, setInterim]     = useState("");
+  const [error, setError]         = useState<string | null>(null);
 
   useEffect(() => {
-    wordsRef.current = normalizeSpeech(scriptText);
-    progressRef.current = createFollowProgressState();
+    wordsRef.current       = normalizeSpeech(scriptText);
+    committedRef.current   = 0;
+    visualRef.current      = 0;
+    prevInterimLenRef.current = 0;
   }, [scriptText]);
 
-  const commitState = useCallback(
-    (nextState: FollowProgressState) => {
-      const prevState = progressRef.current;
-      progressRef.current = nextState;
-
-      if (nextState.visibleCursor !== prevState.visibleCursor) {
-        onWordIndex(nextState.visibleCursor);
+  const emitVisual = useCallback(
+    (next: number) => {
+      if (next !== visualRef.current) {
+        visualRef.current = next;
+        onWordIndex(next);
       }
     },
-    [onWordIndex]
-  );
-
-  const advance = useCallback(
-    (heard: string, mode: "interim" | "final") => {
-      const nextState = applyFollowTranscript({
-        state: progressRef.current,
-        scriptWords: wordsRef.current,
-        heardText: heard,
-        mode,
-      });
-      commitState(nextState);
-    },
-    [commitState]
+    [onWordIndex],
   );
 
   useEffect(() => {
     if (!enabled) {
       recRef.current?.stop?.();
       recRef.current = null;
-      progressRef.current = createFollowProgressState();
+      committedRef.current = 0;
+      visualRef.current    = 0;
+      prevInterimLenRef.current = 0;
       setListening(false);
       setInterim("");
       return;
     }
+
     const rec = getRecognition();
-    if (!rec) {
-      setError("Speech recognition not supported in this browser");
-      return;
-    }
-    rec.continuous = true;
+    if (!rec) { setError("Speech recognition not supported in this browser"); return; }
+
+    rec.continuous     = true;
     rec.interimResults = true;
-    rec.lang = navigator.language || "en-US";
+    rec.lang           = navigator.language || "en-US";
 
     rec.onstart = () => setListening(true);
-    rec.onend = () => {
+    rec.onend   = () => {
       setListening(false);
-      // auto-restart while enabled
-      if (enabled) {
-        try { rec.start(); } catch { /* noop */ }
-      }
+      if (enabled) try { rec.start(); } catch { /* noop */ }
     };
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
       setError(e.error || "speech error");
     };
+
     rec.onresult = (event) => {
-      const interimParts: string[] = [];
+      let interimText = "";
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const r = event.results[i];
         const t = r[0].transcript;
+
         if (r.isFinal) {
-          advance(t, "final");
+          // ── Final: authoritative correction pass ──────────────────────────
+          // Run from committed (not visual) so we always correct from ground
+          // truth even if interim drifted.
+          const spokenWords = normalizeSpeech(t);
+          const nextCommitted = advanceWordByWord(
+            wordsRef.current, committedRef.current, spokenWords,
+          );
+          committedRef.current = nextCommitted;
+
+          // Only snap visual to committed for large resync jumps (e.g. speaker
+          // skipped a section). For normal speech the interim already advanced
+          // visual word-by-word; emitting here would add an unwanted extra word
+          // at the moment the speaker pauses.
+          if (nextCommitted > visualRef.current + 2) {
+            emitVisual(nextCommitted);
+          }
+
+          // Reset interim tracking for the next utterance.
+          prevInterimLenRef.current = 0;
+          setInterim("");
         } else {
-          interimParts.push(t);
+          interimText = t;
         }
       }
-      const interimText = interimParts.join(" ").trim();
-      if (interimText) {
-        setInterim(interimText);
-        advance(interimText, "interim");
-      } else {
-        setInterim("");
+
+      if (!interimText) return;
+      setInterim(interimText);
+
+      // ── Interim: stream each newly detected word immediately ──────────────
+      // Chrome accumulates words in the interim transcript. We process only
+      // the words that are NEW since the last event (the delta).
+      const currWords = normalizeSpeech(interimText);
+      const prevLen   = prevInterimLenRef.current;
+
+      for (let i = prevLen; i < currWords.length; i++) {
+        const next = tryMatchWord(wordsRef.current, visualRef.current, currWords[i]);
+        if (next !== null) emitVisual(next);
       }
+
+      // ── Anchor verification ───────────────────────────────────────────────
+      // The LAST word the STT recognised is the most reliable position anchor.
+      // After processing the delta, verify the cursor stopped right after it.
+      // If it didn't (the word slipped by because the cursor was behind earlier
+      // words in the same delta), give it one more pass from the updated cursor.
+      if (currWords.length > prevLen) {
+        const lastWord = currWords[currWords.length - 1];
+        const curPos   = visualRef.current;
+        const atCursor = wordsRef.current[curPos - 1];
+        if (!atCursor || wordSimilarity(atCursor, lastWord) < MATCH_THRESHOLD) {
+          // Last word didn't land — try again from where the cursor is now.
+          const anchor = tryMatchWord(wordsRef.current, curPos, lastWord);
+          if (anchor !== null) emitVisual(anchor);
+        }
+      }
+
+      prevInterimLenRef.current = currWords.length;
     };
 
     recRef.current = rec;
@@ -159,7 +182,7 @@ export function useSpeechFollow(opts: {
       try { rec.onend = null; rec.stop(); } catch { /* noop */ }
       recRef.current = null;
     };
-  }, [enabled, advance]);
+  }, [enabled, emitVisual]);
 
   return { listening, interim, error };
 }
