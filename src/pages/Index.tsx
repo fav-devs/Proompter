@@ -36,11 +36,21 @@ const Index = () => {
   useEffect(() => { setFollowIdx(null); }, [activeId]);
 
   const speechSupported = isSpeechSupported();
-  useSpeechFollow({
+  const { listening, interim, error: speechError } = useSpeechFollow({
     enabled: settings.followMode,
     scriptText: active?.body ?? "",
     onWordIndex: setFollowIdx,
   });
+
+  useEffect(() => {
+    if (speechError) toast.error(`Mic: ${speechError}`);
+  }, [speechError]);
+
+  useEffect(() => {
+    if (settings.followMode && !speechSupported) {
+      toast.error("Speech recognition not supported in this browser. Try Chrome or Edge.");
+    }
+  }, [settings.followMode, speechSupported]);
 
   // Fullscreen API
   useEffect(() => {
