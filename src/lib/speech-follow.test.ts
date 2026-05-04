@@ -1,136 +1,86 @@
 import { describe, expect, it } from "vitest";
-import {
-  applyFollowTranscript,
-  createFollowProgressState,
-  findFollowIndex,
-  normalizeSpeech,
-  settleInterimProgress,
-} from "@/lib/speech-follow";
+import { advanceWordByWord, normalizeSpeech, wordSimilarity } from "@/lib/speech-follow";
 
-const scriptWords = normalizeSpeech(`
+const script = normalizeSpeech(`
   Welcome everyone to the show. Today we are going to walk through the product roadmap
   and talk about the features shipping this quarter. After that we will answer a few questions
   from the team before we wrap up for the day.
 `);
 
-describe("findFollowIndex", () => {
-  it("advances naturally on a clean phrase match", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      cursor: 0,
-      mode: "final",
-    });
+// Helper: find the cursor position right AFTER a known word
+const after = (word: string) => {
+  const i = script.indexOf(word);
+  if (i === -1) throw new Error(`word "${word}" not in script`);
+  return i + 1;
+};
 
-    expect(nextIndex).toBeGreaterThan(scriptWords.indexOf("roadmap"));
+describe("wordSimilarity", () => {
+  it("exact match → 1", () => expect(wordSimilarity("roadmap", "roadmap")).toBe(1));
+  it("close mis-recognition → high similarity", () => expect(wordSimilarity("features", "fetures")).toBeGreaterThan(0.7));
+  it("short stop words only match exactly", () => {
+    expect(wordSimilarity("to", "do")).toBe(0);
+    expect(wordSimilarity("to", "to")).toBe(1);
   });
-
-  it("handles skipped script words without losing the place", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "today we walk through product roadmap",
-      cursor: 0,
-      mode: "final",
-    });
-
-    expect(nextIndex).toBeGreaterThan(scriptWords.indexOf("roadmap"));
-  });
-
-  it("ignores filler words and still follows the spoken phrase", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "today we are basically going to walk through like the product roadmap",
-      cursor: 0,
-      mode: "final",
-    });
-
-    expect(nextIndex).toBeGreaterThan(scriptWords.indexOf("roadmap"));
-  });
-
-  it("can resync farther ahead after missed lines", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "after that we will answer a few questions from the team",
-      cursor: scriptWords.indexOf("today"),
-      mode: "final",
-    });
-
-    expect(nextIndex).toBeGreaterThan(scriptWords.indexOf("team"));
-  });
-
-  it("stays put when the phrase is too weak to trust", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "the and to",
-      cursor: 0,
-      mode: "interim",
-    });
-
-    expect(nextIndex).toBeNull();
-  });
-
-  it("does not run past the last strongly matched spoken word", () => {
-    const nextIndex = findFollowIndex({
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      cursor: 0,
-      mode: "final",
-    });
-
-    expect(nextIndex).toBe(scriptWords.indexOf("roadmap") + 1);
-  });
+  it("unrelated words → 0", () => expect(wordSimilarity("roadmap", "elephant")).toBe(0));
 });
 
-describe("applyFollowTranscript", () => {
-  it("does not advance interim preview on the first tentative match", () => {
-    const nextState = applyFollowTranscript({
-      state: createFollowProgressState(),
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      mode: "interim",
-    });
-
-    expect(nextState.committedCursor).toBe(0);
-    expect(nextState.visibleCursor).toBe(0);
-    expect(nextState.pendingInterimCursor).toBeGreaterThan(0);
+describe("advanceWordByWord", () => {
+  it("advances word-by-word on a clean sentence", () => {
+    const cursor = advanceWordByWord(script, 0, normalizeSpeech("today we are going to walk"));
+    expect(cursor).toBe(after("walk"));
   });
 
-  it("only advances interim preview after repeated confirmation and limits the lead", () => {
-    const firstState = applyFollowTranscript({
-      state: createFollowProgressState(),
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      mode: "interim",
-    });
-    const secondState = applyFollowTranscript({
-      state: firstState,
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      mode: "interim",
-    });
-
-    expect(secondState.visibleCursor).toBeGreaterThan(0);
-    expect(secondState.visibleCursor).toBeLessThanOrEqual(10);
-    expect(secondState.committedCursor).toBe(0);
+  it("lands on roadmap when that is the last spoken word", () => {
+    const cursor = advanceWordByWord(script, 0, normalizeSpeech("today we are going to walk through the product roadmap"));
+    expect(cursor).toBe(after("roadmap"));
   });
 
-  it("settles interim preview back to the committed cursor when speech tails off", () => {
-    const firstState = applyFollowTranscript({
-      state: createFollowProgressState(),
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      mode: "interim",
-    });
-    const secondState = applyFollowTranscript({
-      state: firstState,
-      scriptWords,
-      heardText: "today we are going to walk through the product roadmap",
-      mode: "interim",
-    });
-    const settledState = settleInterimProgress(secondState);
+  it("skips a missed script word and keeps tracking", () => {
+    // "are" omitted — should still reach "walk"
+    const cursor = advanceWordByWord(script, 0, normalizeSpeech("today we going to walk"));
+    expect(cursor).toBe(after("walk"));
+  });
 
-    expect(secondState.visibleCursor).toBeGreaterThan(0);
-    expect(settledState.visibleCursor).toBe(settledState.committedCursor);
-    expect(settledState.pendingInterimCursor).toBeNull();
+  it("ignores inserted filler words", () => {
+    const cursor = advanceWordByWord(script, 0, normalizeSpeech("today we basically going to walk"));
+    // "basically" is a filler — cursor still ends at after "walk"
+    expect(cursor).toBe(after("walk"));
+  });
+
+  it("handles a STT mis-recognition via fuzzy match", () => {
+    // "roadmep" close enough to "roadmap"
+    const cursor = advanceWordByWord(script, 0, normalizeSpeech("today we are going to walk through the product roadmep"));
+    expect(cursor).toBe(after("roadmap"));
+  });
+
+  it("never goes backward", () => {
+    const start  = after("roadmap");
+    const cursor = advanceWordByWord(script, start, normalizeSpeech("today we are"));
+    // words already passed — should not retreat
+    expect(cursor).toBeGreaterThanOrEqual(start);
+  });
+
+  it("can resync after jumping ahead (missed lines)", () => {
+    const cursor = advanceWordByWord(
+      script,
+      after("today"),
+      normalizeSpeech("after that we will answer a few questions from the team"),
+    );
+    expect(cursor).toBe(after("team"));
+  });
+
+  it("stop words only match in-place and do not skip ahead", () => {
+    // cursor is at "to" in script; spoken "to" should advance by 1 only
+    const toIdx  = script.indexOf("to");
+    const cursor = advanceWordByWord(script, toIdx, ["to"]);
+    expect(cursor).toBe(toIdx + 1);
+  });
+
+  it("advances incrementally — each final adds exactly the words just spoken", () => {
+    let cursor = 0;
+    cursor = advanceWordByWord(script, cursor, normalizeSpeech("welcome everyone"));
+    expect(cursor).toBe(after("everyone"));
+    cursor = advanceWordByWord(script, cursor, normalizeSpeech("to the show today"));
+    expect(cursor).toBe(after("today"));
   });
 });

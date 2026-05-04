@@ -1,39 +1,33 @@
-export type FollowMatchMode = "interim" | "final";
+/**
+ * speech-follow.ts
+ *
+ * Word-by-word sequential script tracker.
+ *
+ * Each spoken word is looked up in the script near the current cursor.
+ * The cursor advances by exactly 1 per matched word — overshoot is impossible.
+ *
+ * Two-phase matching:
+ *   1. Sequential scan  — word-by-word within MAX_SIGNAL_SKIP of current pos.
+ *      Handles normal speech flow and single missed/skipped script words.
+ *   2. Wide resync       — if nothing matched at all (speaker jumped ahead),
+ *      scan up to RESYNC_WINDOW words ahead to re-lock onto the new position.
+ *
+ * Filler / inserted words that don't match anything nearby are ignored.
+ */
 
-export type FollowProgressState = {
-  committedCursor: number;
-  visibleCursor: number;
-  pendingInterimCursor: number | null;
-  interimStreak: number;
-  lastInterimWordCount: number;
-};
+const MATCH_THRESHOLD = 0.72;
+// Max script words to skip forward per spoken word during normal flow.
+const MAX_SIGNAL_SKIP = 3;
+// How far ahead to scan when the speaker has jumped sections.
+const RESYNC_WINDOW = 80;
 
-const STRONG_MATCH_THRESHOLD = 0.78;
-const EXACTISH_MATCH_THRESHOLD = 0.92;
-const SEARCH_BACKTRACK = 10;
-const SEARCH_AHEAD = 220;
-const DISTANCE_PENALTY_START = 48;
-const MAX_INTERIM_LEAD = 10;
-const MIN_INTERIM_LEAD = 4;
 const STOP_WORDS = new Set([
   "a", "an", "and", "are", "as", "at", "be", "but", "by", "for", "from",
   "if", "in", "into", "is", "it", "of", "on", "or", "so", "that", "the",
   "to", "up", "we", "with", "you",
 ]);
 
-type Alignment = {
-  adjustedScore: number;
-  strongMatches: number;
-  exactishMatches: number;
-  signalMatches: number;
-  maxConsecutiveMatches: number;
-  signalCoverage: number;
-  endIndexExclusive: number;
-};
-
-const sanitizeWord = (word: string) => word.replace(/'/g, "");
-
-const isSignalWord = (word: string) => word.length >= 4 || !STOP_WORDS.has(word);
+// ─── text utilities ──────────────────────────────────────────────────────────
 
 export const normalizeSpeech = (text: string) =>
   text
@@ -42,287 +36,150 @@ export const normalizeSpeech = (text: string) =>
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s']/gu, " ")
     .split(/\s+/)
-    .map(sanitizeWord)
+    .map((w) => w.replace(/'/g, ""))
     .filter(Boolean);
 
-const levenshteinDistance = (a: string, b: string) => {
+const isSignalWord = (word: string) => word.length >= 4 || !STOP_WORDS.has(word);
+
+const levenshteinDistance = (a: string, b: string): number => {
   if (a === b) return 0;
   if (!a.length) return b.length;
   if (!b.length) return a.length;
-
-  const prev = new Array<number>(b.length + 1);
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i);
   const next = new Array<number>(b.length + 1);
-
-  for (let j = 0; j <= b.length; j++) prev[j] = j;
-
   for (let i = 1; i <= a.length; i++) {
     next[0] = i;
     for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
       next[j] = Math.min(
         prev[j] + 1,
         next[j - 1] + 1,
-        prev[j - 1] + cost,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
       );
     }
-
     for (let j = 0; j <= b.length; j++) prev[j] = next[j];
   }
-
   return prev[b.length];
 };
 
-const wordSimilarity = (scriptWord: string, heardWord: string) => {
+export const wordSimilarity = (scriptWord: string, heardWord: string): number => {
   if (!scriptWord || !heardWord) return 0;
   if (scriptWord === heardWord) return 1;
-
-  const a = sanitizeWord(scriptWord);
-  const b = sanitizeWord(heardWord);
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-
-  const shortest = Math.min(a.length, b.length);
-  if (shortest <= 3) return 0;
-
-  if (a.startsWith(b) || b.startsWith(a)) {
-    return shortest / Math.max(a.length, b.length);
-  }
-
-  const similarity = 1 - levenshteinDistance(a, b) / Math.max(a.length, b.length);
-  return similarity >= 0.72 ? similarity : 0;
+  const shortest = Math.min(scriptWord.length, heardWord.length);
+  if (shortest <= 3) return scriptWord === heardWord ? 1 : 0;
+  if (scriptWord.startsWith(heardWord) || heardWord.startsWith(scriptWord))
+    return shortest / Math.max(scriptWord.length, heardWord.length);
+  const sim = 1 - levenshteinDistance(scriptWord, heardWord) / Math.max(scriptWord.length, heardWord.length);
+  return sim >= 0.72 ? sim : 0;
 };
 
-const alignPhrase = (
+// ─── core tracker ────────────────────────────────────────────────────────────
+
+/** Process words sequentially from `startPos`, advancing by at most MAX_SIGNAL_SKIP per word.
+ *  Returns [newPos, signalMatchCount]. */
+const scanSequential = (
   scriptWords: string[],
-  heardWords: string[],
-  absoluteWindowStart: number,
+  startPos: number,
+  spokenWords: string[],
+): [number, number] => {
+  let pos = startPos;
+  let signalMatched = 0;
+  for (const spoken of spokenWords) {
+    if (!spoken) continue;
+    // Stop words only match in-place (skip=0) to prevent them jumping over content.
+    const skipLimit = isSignalWord(spoken) ? MAX_SIGNAL_SKIP : 0;
+    for (let skip = 0; skip <= skipLimit; skip++) {
+      const idx = pos + skip;
+      if (idx >= scriptWords.length) break;
+      if (wordSimilarity(scriptWords[idx], spoken) >= MATCH_THRESHOLD) {
+        pos = idx + 1;
+        if (isSignalWord(spoken)) signalMatched++;
+        break;
+      }
+    }
+    // No match → filler/insertion, leave pos unchanged
+  }
+  return [pos, signalMatched];
+};
+
+/**
+ * Wide resync: scan ahead up to RESYNC_WINDOW when the speaker has jumped
+ * to a different section.  Anchors on the first signal word match, then
+ * runs sequential matching from there.  Requires at least 2 signal words
+ * to match after the anchor to be accepted (avoids false positives).
+ */
+const tryResync = (
+  scriptWords: string[],
   cursor: number,
-): Alignment | null => {
-  const rows = heardWords.length;
-  const cols = scriptWords.length;
-  const scores = Array.from({ length: rows + 1 }, () => Array<number>(cols + 1).fill(0));
-  const trace = Array.from({ length: rows + 1 }, () => Array<number>(cols + 1).fill(0));
-  const sims = Array.from({ length: rows + 1 }, () => Array<number>(cols + 1).fill(0));
+  signalWords: string[],
+): number | null => {
+  if (signalWords.length < 2) return null;
+  const wideEnd = Math.min(scriptWords.length, cursor + RESYNC_WINDOW);
 
-  let bestScore = 0;
-  let bestI = 0;
-  let bestJ = 0;
+  for (let anchorIdx = cursor + MAX_SIGNAL_SKIP + 1; anchorIdx < wideEnd; anchorIdx++) {
+    if (wordSimilarity(scriptWords[anchorIdx], signalWords[0]) < MATCH_THRESHOLD) continue;
 
-  for (let i = 1; i <= rows; i++) {
-    for (let j = 1; j <= cols; j++) {
-      const similarity = wordSimilarity(scriptWords[j - 1], heardWords[i - 1]);
-      sims[i][j] = similarity;
-
-      const diag =
-        scores[i - 1][j - 1] +
-        (similarity >= STRONG_MATCH_THRESHOLD ? 1.7 + similarity * 1.6 : -1.4);
-      const up = scores[i - 1][j] - 0.9;
-      const left = scores[i][j - 1] - 0.45;
-
-      let bestLocal = 0;
-      let direction = 0;
-
-      if (diag > bestLocal) {
-        bestLocal = diag;
-        direction = 1;
-      }
-      if (up > bestLocal) {
-        bestLocal = up;
-        direction = 2;
-      }
-      if (left > bestLocal) {
-        bestLocal = left;
-        direction = 3;
-      }
-
-      scores[i][j] = bestLocal;
-      trace[i][j] = direction;
-
-      if (bestLocal > bestScore || (bestLocal === bestScore && j < bestJ)) {
-        bestScore = bestLocal;
-        bestI = i;
-        bestJ = j;
-      }
-    }
+    // Anchor found. Run sequential from one past the anchor with remaining signals.
+    const [candidate, extraMatched] = scanSequential(scriptWords, anchorIdx + 1, signalWords.slice(1));
+    // Accept only if we matched at least one more signal word after the anchor.
+    if (extraMatched >= 1 && candidate > anchorIdx + 1) return candidate;
   }
-
-  if (!bestScore) return null;
-
-  let i = bestI;
-  let j = bestJ;
-  const matchedScriptIndexes: number[] = [];
-  const matchedHeardIndexes: number[] = [];
-  let strongMatches = 0;
-  let exactishMatches = 0;
-  let signalMatches = 0;
-
-  while (i > 0 && j > 0 && scores[i][j] > 0) {
-    const direction = trace[i][j];
-
-    if (direction === 1) {
-      const similarity = sims[i][j];
-      if (similarity >= STRONG_MATCH_THRESHOLD) {
-        strongMatches++;
-        matchedScriptIndexes.push(j - 1);
-        matchedHeardIndexes.push(i - 1);
-
-        if (similarity >= EXACTISH_MATCH_THRESHOLD) exactishMatches++;
-        if (isSignalWord(scriptWords[j - 1]) || isSignalWord(heardWords[i - 1])) {
-          signalMatches++;
-        }
-      }
-
-      i--;
-      j--;
-    } else if (direction === 2) {
-      i--;
-    } else if (direction === 3) {
-      j--;
-    } else {
-      break;
-    }
-  }
-
-  if (!strongMatches) return null;
-
-  matchedScriptIndexes.reverse();
-  matchedHeardIndexes.reverse();
-
-  let maxConsecutiveMatches = 0;
-  let runLength = 0;
-
-  for (let index = 0; index < matchedScriptIndexes.length; index++) {
-    const isConsecutive =
-      index > 0 &&
-      matchedScriptIndexes[index] === matchedScriptIndexes[index - 1] + 1 &&
-      matchedHeardIndexes[index] === matchedHeardIndexes[index - 1] + 1;
-
-    runLength = isConsecutive ? runLength + 1 : 1;
-    maxConsecutiveMatches = Math.max(maxConsecutiveMatches, runLength);
-  }
-
-  const signalWordCount = heardWords.filter(isSignalWord).length || heardWords.length;
-  const lastMatchedIndex = matchedScriptIndexes[matchedScriptIndexes.length - 1];
-  const absoluteEndIndex = absoluteWindowStart + lastMatchedIndex + 1;
-  const adjustedScore =
-    bestScore - Math.max(0, absoluteEndIndex - cursor - DISTANCE_PENALTY_START) * 0.04;
-
-  return {
-    adjustedScore,
-    strongMatches,
-    exactishMatches,
-    signalMatches,
-    maxConsecutiveMatches,
-    signalCoverage: signalMatches / signalWordCount,
-    endIndexExclusive: absoluteEndIndex,
-  };
+  return null;
 };
 
-export const findFollowIndex = (options: {
-  scriptWords: string[];
-  heardText: string;
-  cursor: number;
-  mode: FollowMatchMode;
-}) => {
-  const heardWords = normalizeSpeech(options.heardText);
-  if (heardWords.length < 2 || !options.scriptWords.length) return null;
-
-  const windowStart = Math.max(0, options.cursor - SEARCH_BACKTRACK);
-  const windowEnd = Math.min(options.scriptWords.length, options.cursor + SEARCH_AHEAD);
-  const windowWords = options.scriptWords.slice(windowStart, windowEnd);
-  const alignment = alignPhrase(windowWords, heardWords, windowStart, options.cursor);
-  if (!alignment) return null;
-
-  const minStrongMatches = heardWords.length >= 6 ? 3 : 2;
-  const minScore = options.mode === "final" ? 3.2 : 4.2;
-  const minSignalCoverage = options.mode === "final" ? 0.34 : 0.5;
-  const hasReliableAnchor =
-    alignment.signalMatches > 0 ||
-    alignment.exactishMatches >= 3 ||
-    alignment.maxConsecutiveMatches >= 3;
-
-  if (alignment.adjustedScore < minScore) return null;
-  if (alignment.strongMatches < minStrongMatches && alignment.maxConsecutiveMatches < 2) return null;
-  if (alignment.signalCoverage < minSignalCoverage && alignment.strongMatches < 3) return null;
-  if (!hasReliableAnchor) return null;
-  if (alignment.endIndexExclusive <= options.cursor) return null;
-
-  return alignment.endIndexExclusive;
+/**
+ * Advance `cursor` through `scriptWords` by matching each word in `spokenWords`.
+ *
+ * For each spoken word:
+ *   • Signal word  → look ahead up to MAX_SIGNAL_SKIP script positions
+ *   • Stop / short → only check exact cursor position (prevents hopping)
+ *   • No match     → treat as filler/insertion, cursor stays put
+ *
+ * If fewer than 2 signal words matched (speaker may have jumped ahead),
+/**
+ * Try to match a single spoken word at/near `cursor` in the script.
+ * Used for live interim word-by-word streaming.
+ *
+ * Signal words may skip up to 2 script positions to absorb a dropped word from
+ * STT. Stop words must match exactly so they don't hop over content words.
+ *
+ * Returns the new cursor (idx + 1) if matched, null if not.
+ */
+export const tryMatchWord = (
+  scriptWords: string[],
+  cursor: number,
+  spokenWord: string,
+  skipLimit?: number,
+): number | null => {
+  if (!spokenWord) return null;
+  const limit = skipLimit ?? (isSignalWord(spokenWord) ? 2 : 0);
+  for (let skip = 0; skip <= limit; skip++) {
+    const idx = cursor + skip;
+    if (idx >= scriptWords.length) break;
+    if (wordSimilarity(scriptWords[idx], spokenWord) >= MATCH_THRESHOLD) {
+      return idx + 1;
+    }
+  }
+  return null;
 };
 
-export const createFollowProgressState = (): FollowProgressState => ({
-  committedCursor: 0,
-  visibleCursor: 0,
-  pendingInterimCursor: null,
-  interimStreak: 0,
-  lastInterimWordCount: 0,
-});
+/**
+ * Advance `cursor` through `scriptWords` by matching each word in `spokenWords`.
+ * Used for final (confirmed) transcripts — full correction pass with resync.
+ */
+export const advanceWordByWord = (
+  scriptWords: string[],
+  cursor: number,
+  spokenWords: string[],
+): number => {
+  const signals = spokenWords.filter(isSignalWord);
+  const [next, signalMatchCount] = scanSequential(scriptWords, cursor, spokenWords);
 
-export const settleInterimProgress = (state: FollowProgressState): FollowProgressState => ({
-  ...state,
-  visibleCursor: state.committedCursor,
-  pendingInterimCursor: null,
-  interimStreak: 0,
-  lastInterimWordCount: 0,
-});
-
-export const applyFollowTranscript = (options: {
-  state: FollowProgressState;
-  scriptWords: string[];
-  heardText: string;
-  mode: FollowMatchMode;
-}) => {
-  const heardWords = normalizeSpeech(options.heardText);
-  const candidate = findFollowIndex({
-    scriptWords: options.scriptWords,
-    heardText: options.heardText,
-    cursor: options.state.committedCursor,
-    mode: options.mode,
-  });
-
-  if (options.mode === "final") {
-    if (candidate == null || candidate <= options.state.committedCursor) {
-      return settleInterimProgress(options.state);
-    }
-
-    return {
-      committedCursor: candidate,
-      visibleCursor: candidate,
-      pendingInterimCursor: null,
-      interimStreak: 0,
-      lastInterimWordCount: 0,
-    };
+  // Attempt wide resync when signal words largely didn't match near cursor.
+  // This handles the case where the speaker has jumped to a different section.
+  if (signalMatchCount < 2 && signals.length >= 2) {
+    const resynced = tryResync(scriptWords, cursor, signals);
+    if (resynced != null && resynced > next) return resynced;
   }
 
-  if (candidate == null || candidate <= options.state.committedCursor) {
-    return {
-      ...options.state,
-      pendingInterimCursor: null,
-      interimStreak: 0,
-      lastInterimWordCount: heardWords.length,
-    };
-  }
-
-  const clampedCandidate = Math.min(
-    candidate,
-    options.state.committedCursor + Math.min(MAX_INTERIM_LEAD, Math.max(MIN_INTERIM_LEAD, heardWords.length + 2)),
-  );
-  const continuingRun =
-    options.state.pendingInterimCursor != null &&
-    clampedCandidate >= options.state.pendingInterimCursor &&
-    clampedCandidate <= options.state.pendingInterimCursor + 3 &&
-    heardWords.length >= options.state.lastInterimWordCount;
-  const nextStreak = continuingRun ? options.state.interimStreak + 1 : 1;
-  const nextVisibleCursor =
-    nextStreak >= 2 && clampedCandidate > options.state.visibleCursor
-      ? clampedCandidate
-      : options.state.visibleCursor;
-
-  return {
-    ...options.state,
-    visibleCursor: nextVisibleCursor,
-    pendingInterimCursor: clampedCandidate,
-    interimStreak: nextStreak,
-    lastInterimWordCount: heardWords.length,
-  };
+  return next;
 };
