@@ -59,12 +59,18 @@
 }
 
 @layer base {
+  html, body, #root {
+    height: 100%;
+  }
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply overflow-hidden bg-background text-foreground;
     font-family: 'Merriweather', Georgia, serif;
+  }
+  #root {
+    @apply overflow-hidden;
   }
   .font-mono {
     font-family: 'Roboto Mono', ui-monospace, monospace;
