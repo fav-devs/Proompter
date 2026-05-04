@@ -1,22 +1,63 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  applyFollowTranscript,
+  createFollowProgressState,
+  normalizeSpeech,
+  type FollowProgressState,
+} from "@/lib/speech-follow";
 
-// Web Speech API types (browsers vary)
-type SR = any;
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
 
-const getRecognition = (): SR | null => {
-  const w = window as any;
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  length: number;
+  [index: number]: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionResultListLike {
+  length: number;
+  [index: number]: SpeechRecognitionResultLike;
+}
+
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: SpeechRecognitionResultListLike;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface SpeechRecognitionWindow extends Window {
+  SpeechRecognition?: new () => SpeechRecognitionLike;
+  webkitSpeechRecognition?: new () => SpeechRecognitionLike;
+}
+
+const getRecognition = (): SpeechRecognitionLike | null => {
+  const w = window as SpeechRecognitionWindow;
   const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
   return Ctor ? new Ctor() : null;
 };
 
 export const isSpeechSupported = () => {
   if (typeof window === "undefined") return false;
-  const w = window as any;
+  const w = window as SpeechRecognitionWindow;
   return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
 };
-
-const normalize = (s: string) =>
-  s.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, " ").split(/\s+/).filter(Boolean);
 
 export function useSpeechFollow(opts: {
   enabled: boolean;
@@ -24,48 +65,48 @@ export function useSpeechFollow(opts: {
   onWordIndex: (index: number) => void;
 }) {
   const { enabled, scriptText, onWordIndex } = opts;
-  const recRef = useRef<SR | null>(null);
+  const recRef = useRef<SpeechRecognitionLike | null>(null);
   const wordsRef = useRef<string[]>([]);
-  const cursorRef = useRef(0);
+  const progressRef = useRef<FollowProgressState>(createFollowProgressState());
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    wordsRef.current = normalize(scriptText);
-    cursorRef.current = 0;
+    wordsRef.current = normalizeSpeech(scriptText);
+    progressRef.current = createFollowProgressState();
   }, [scriptText]);
 
-  const advance = useCallback(
-    (heard: string) => {
-      const heardWords = normalize(heard);
-      if (!heardWords.length) return;
-      const words = wordsRef.current;
-      let cursor = cursorRef.current;
-      const WINDOW = 12;
-      for (const hw of heardWords) {
-        const end = Math.min(words.length, cursor + WINDOW);
-        let matched = -1;
-        for (let i = cursor; i < end; i++) {
-          if (words[i] === hw || words[i].startsWith(hw) || hw.startsWith(words[i])) {
-            matched = i;
-            break;
-          }
-        }
-        if (matched >= 0) cursor = matched + 1;
-      }
-      if (cursor !== cursorRef.current) {
-        cursorRef.current = cursor;
-        onWordIndex(cursor);
+  const commitState = useCallback(
+    (nextState: FollowProgressState) => {
+      const prevState = progressRef.current;
+      progressRef.current = nextState;
+
+      if (nextState.visibleCursor !== prevState.visibleCursor) {
+        onWordIndex(nextState.visibleCursor);
       }
     },
     [onWordIndex]
+  );
+
+  const advance = useCallback(
+    (heard: string, mode: "interim" | "final") => {
+      const nextState = applyFollowTranscript({
+        state: progressRef.current,
+        scriptWords: wordsRef.current,
+        heardText: heard,
+        mode,
+      });
+      commitState(nextState);
+    },
+    [commitState]
   );
 
   useEffect(() => {
     if (!enabled) {
       recRef.current?.stop?.();
       recRef.current = null;
+      progressRef.current = createFollowProgressState();
       setListening(false);
       setInterim("");
       return;
@@ -87,21 +128,27 @@ export function useSpeechFollow(opts: {
         try { rec.start(); } catch { /* noop */ }
       }
     };
-    rec.onerror = (e: any) => {
+    rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
       setError(e.error || "speech error");
     };
-    rec.onresult = (event: any) => {
-      let interimText = "";
+    rec.onresult = (event) => {
+      const interimParts: string[] = [];
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const r = event.results[i];
         const t = r[0].transcript;
-        if (r.isFinal) advance(t);
-        else interimText += t;
+        if (r.isFinal) {
+          advance(t, "final");
+        } else {
+          interimParts.push(t);
+        }
       }
+      const interimText = interimParts.join(" ").trim();
       if (interimText) {
         setInterim(interimText);
-        advance(interimText);
+        advance(interimText, "interim");
+      } else {
+        setInterim("");
       }
     };
 
