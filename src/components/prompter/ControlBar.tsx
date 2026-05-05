@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import type { Settings } from "@/lib/teleprompter-store";
 import {
   Play, Pause, RotateCcw, Maximize, Minimize, FlipHorizontal, FlipVertical,
-  Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal, SkipBack, SkipForward,
+  Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal, SkipBack, SkipForward, Settings2,
 } from "lucide-react";
 
 type NumericSettingKey = "fontSize" | "lineHeight" | "speed";
@@ -23,11 +23,12 @@ interface Props {
   speechSupported: boolean;
   listening: boolean;
   singleRow?: boolean;
+  onVoiceSettings?: () => void;
 }
 
 export function ControlBar({
   settings, playing, onPlay, onReset, onRewind, onAdvance, onFullscreen, isFullscreen,
-  onChange, speechSupported, listening, singleRow = false,
+  onChange, speechSupported, listening, singleRow = false, onVoiceSettings,
 }: Props) {
   const num = (key: NumericSettingKey, delta: number, min: number, max: number) => {
     const nextValue = Math.min(max, Math.max(min, settings[key] + delta));
@@ -136,6 +137,30 @@ export function ControlBar({
           onCheckedChange={(v) => onChange({ followMode: v })}
         />
       </div>
+
+      {/* Voice Commands */}
+      {speechSupported && (
+        <Button
+          size="sm"
+          variant={settings.voiceCommandsEnabled ? "default" : "ghost"}
+          onClick={() => onChange({ voiceCommandsEnabled: !settings.voiceCommandsEnabled })}
+          title="Voice commands settings"
+        >
+          <Mic className="h-4 w-4" />
+          <span className="ml-1.5 font-mono text-[10px] uppercase">Commands</span>
+        </Button>
+      )}
+
+      {onVoiceSettings && speechSupported && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onVoiceSettings}
+          title="Configure voice commands"
+        >
+          <Settings2 className="h-4 w-4" />
+        </Button>
+      )}
 
       <div className="ml-auto" />
       <Button size="sm" variant="ghost" onClick={onFullscreen}>

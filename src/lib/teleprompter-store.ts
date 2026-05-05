@@ -16,6 +16,7 @@ export type Settings = {
   mirrorV: boolean;
   followMode: boolean;
   lightbox: boolean; // horizontal scrolling mode
+  voiceCommandsEnabled: boolean;
 };
 
 export const defaultSettings: Settings = {
@@ -26,6 +27,7 @@ export const defaultSettings: Settings = {
   mirrorV: false,
   followMode: false,
   lightbox: false,
+  voiceCommandsEnabled: false,
 };
 
 export function loadScripts(): Script[] {
