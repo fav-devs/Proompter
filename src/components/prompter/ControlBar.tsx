@@ -45,128 +45,120 @@ export function ControlBar({
 
     onChange({ speed: nextValue });
   };
+  const containerClass = singleRow
+    ? "inline-flex max-w-full flex-nowrap items-center gap-3 whitespace-nowrap rounded-xl border border-border/60 bg-card/80 px-3 py-2 backdrop-blur"
+    : "flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/80 px-3 py-3 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-3 md:rounded-xl md:py-2";
+
   return (
-    <div
-      className={
-        "flex items-center gap-3 rounded-xl border border-border/60 bg-card/80 px-3 py-2 backdrop-blur " +
-        (singleRow ? "inline-flex max-w-full flex-nowrap whitespace-nowrap" : "flex-wrap")
-      }
-    >
-      <div className="flex items-center gap-1">
-        <Button size="sm" variant="ghost" onClick={onRewind} title="Rewind">
+    <div className={containerClass}>
+      <div className="grid grid-cols-4 gap-2 sm:flex sm:items-center sm:gap-1">
+        <Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={onRewind} title="Rewind">
           <SkipBack className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant={playing ? "secondary" : "default"} onClick={onPlay}>
+        <Button size="sm" variant={playing ? "secondary" : "default"} className="w-full sm:w-auto" onClick={onPlay}>
           {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           <span className="ml-1.5 font-mono text-xs">{playing ? "Pause" : "Play"}</span>
         </Button>
-        <Button size="sm" variant="ghost" onClick={onAdvance} title="Advance">
+        <Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={onAdvance} title="Advance">
           <SkipForward className="h-4 w-4" />
         </Button>
-        <Button size="sm" variant="ghost" onClick={onReset} title="Reset">
+        <Button size="sm" variant="ghost" className="w-full sm:w-auto" onClick={onReset} title="Reset">
           <RotateCcw className="h-4 w-4" />
         </Button>
       </div>
 
-      <div className="h-8 w-px bg-border/60" />
+      <div className="hidden h-8 w-px bg-border/60 md:block" />
 
-      {/* Speed */}
-      <div className="flex items-center gap-2 min-w-[180px]">
+      <div className="flex min-w-0 items-center gap-2 md:min-w-[180px]">
         <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Speed</Label>
         <Slider
           value={[settings.speed]}
           min={20} max={240} step={5}
           onValueChange={(v) => onChange({ speed: v[0] })}
-          className="w-28"
+          className="flex-1 md:w-28"
         />
-        <span className="font-mono text-xs text-primary tabular-nums w-8">{settings.speed}</span>
+        <span className="w-8 font-mono text-xs text-primary tabular-nums">{settings.speed}</span>
       </div>
 
-      {/* Font size */}
-      <div className="flex items-center gap-1">
-        <Label className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground mr-1">Size</Label>
+      <div className="flex items-center justify-between gap-2 md:justify-start">
+        <Label className="mr-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Size</Label>
         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => num("fontSize", -4, 18, 160)}>
           <Minus className="h-3.5 w-3.5" />
         </Button>
-        <span className="font-mono text-xs tabular-nums w-8 text-center">{settings.fontSize}</span>
+        <span className="w-8 text-center font-mono text-xs tabular-nums">{settings.fontSize}</span>
         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => num("fontSize", 4, 18, 160)}>
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      <div className="h-8 w-px bg-border/60" />
+      <div className="hidden h-8 w-px bg-border/60 md:block" />
 
-      {/* Mirror */}
-      <Button
-        size="sm" variant={settings.mirrorH ? "default" : "ghost"}
-        onClick={() => onChange({ mirrorH: !settings.mirrorH })}
-        title="Mirror horizontal"
-      >
-        <FlipHorizontal className="h-4 w-4" />
-      </Button>
-      <Button
-        size="sm" variant={settings.mirrorV ? "default" : "ghost"}
-        onClick={() => onChange({ mirrorV: !settings.mirrorV })}
-        title="Mirror vertical"
-      >
-        <FlipVertical className="h-4 w-4" />
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm" variant={settings.mirrorH ? "default" : "ghost"}
+          onClick={() => onChange({ mirrorH: !settings.mirrorH })}
+          title="Mirror horizontal"
+        >
+          <FlipHorizontal className="h-4 w-4" />
+        </Button>
+        <Button
+          size="sm" variant={settings.mirrorV ? "default" : "ghost"}
+          onClick={() => onChange({ mirrorV: !settings.mirrorV })}
+          title="Mirror vertical"
+        >
+          <FlipVertical className="h-4 w-4" />
+        </Button>
+        <Button
+          size="sm" variant={settings.lightbox ? "default" : "ghost"}
+          onClick={() => onChange({ lightbox: !settings.lightbox })}
+          title="Lightbox (horizontal) mode"
+        >
+          {settings.lightbox ? <MoveHorizontal className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
+          <span className="ml-1.5 font-mono text-[10px] uppercase">{settings.lightbox ? "Lightbox" : "Vertical"}</span>
+        </Button>
 
-      {/* Lightbox */}
-      <Button
-        size="sm" variant={settings.lightbox ? "default" : "ghost"}
-        onClick={() => onChange({ lightbox: !settings.lightbox })}
-        title="Lightbox (horizontal) mode"
-      >
-        {settings.lightbox ? <MoveHorizontal className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
-        <span className="ml-1.5 font-mono text-[10px] uppercase">{settings.lightbox ? "Lightbox" : "Vertical"}</span>
-      </Button>
+        <div className="flex min-w-[136px] flex-1 items-center gap-2 rounded-lg border border-primary/30 px-2 py-1">
+          {settings.followMode ? (
+            listening ? <Mic className="h-4 w-4 animate-pulse text-primary" /> : <Mic className="h-4 w-4 text-muted-foreground" />
+          ) : <MicOff className="h-4 w-4 text-muted-foreground" />}
+          <Label htmlFor="follow" className="font-mono text-[10px] uppercase tracking-wider">Follow</Label>
+          <Switch
+            id="follow"
+            checked={settings.followMode}
+            disabled={!speechSupported}
+            onCheckedChange={(v) => onChange({ followMode: v })}
+          />
+        </div>
 
-      <div className="h-8 w-px bg-border/60" />
+        {speechSupported && (
+          <Button
+            size="sm"
+            variant={settings.voiceCommandsEnabled ? "default" : "ghost"}
+            onClick={() => onChange({ voiceCommandsEnabled: !settings.voiceCommandsEnabled })}
+            title="Voice commands settings"
+          >
+            <Mic className="h-4 w-4" />
+            <span className="ml-1.5 font-mono text-[10px] uppercase">Commands</span>
+          </Button>
+        )}
 
-      {/* Follow Mode */}
-      <div className="flex items-center gap-2 rounded-lg border border-primary/30 px-2 py-1">
-        {settings.followMode ? (
-          listening ? <Mic className="h-4 w-4 text-primary animate-pulse" /> : <Mic className="h-4 w-4 text-muted-foreground" />
-        ) : <MicOff className="h-4 w-4 text-muted-foreground" />}
-        <Label htmlFor="follow" className="font-mono text-[10px] uppercase tracking-wider">Follow</Label>
-        <Switch
-          id="follow"
-          checked={settings.followMode}
-          disabled={!speechSupported}
-          onCheckedChange={(v) => onChange({ followMode: v })}
-        />
+        {onVoiceSettings && speechSupported && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onVoiceSettings}
+            title="Configure voice commands"
+          >
+            <Settings2 className="h-4 w-4" />
+          </Button>
+        )}
+
+        <div className="hidden md:block md:flex-1" />
+        <Button size="sm" variant="ghost" className="w-full sm:w-auto md:ml-auto md:w-auto" onClick={onFullscreen}>
+          {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+          <span className="ml-1.5 font-mono text-[10px] uppercase">{isFullscreen ? "Exit" : "Fullscreen"}</span>
+        </Button>
       </div>
-
-      {/* Voice Commands */}
-      {speechSupported && (
-        <Button
-          size="sm"
-          variant={settings.voiceCommandsEnabled ? "default" : "ghost"}
-          onClick={() => onChange({ voiceCommandsEnabled: !settings.voiceCommandsEnabled })}
-          title="Voice commands settings"
-        >
-          <Mic className="h-4 w-4" />
-          <span className="ml-1.5 font-mono text-[10px] uppercase">Commands</span>
-        </Button>
-      )}
-
-      {onVoiceSettings && speechSupported && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={onVoiceSettings}
-          title="Configure voice commands"
-        >
-          <Settings2 className="h-4 w-4" />
-        </Button>
-      )}
-
-      <div className="ml-auto" />
-      <Button size="sm" variant="ghost" onClick={onFullscreen}>
-        {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-        <span className="ml-1.5 font-mono text-[10px] uppercase">{isFullscreen ? "Exit" : "Fullscreen"}</span>
-      </Button>
     </div>
   );
 }
