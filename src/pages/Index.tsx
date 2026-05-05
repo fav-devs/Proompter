@@ -3,15 +3,18 @@ import { PrompterStage } from "@/components/prompter/PrompterStage";
 import { LightboxStage } from "@/components/prompter/LightboxStage";
 import { ControlBar } from "@/components/prompter/ControlBar";
 import { ScriptLibrary } from "@/components/prompter/ScriptLibrary";
+import { VoiceCommandSettings } from "@/components/VoiceCommandSettings";
 import {
   defaultSettings,
   loadScripts, loadSettings, saveScripts, saveSettings,
   type Script, type Settings,
 } from "@/lib/teleprompter-store";
 import { isSpeechSupported, useSpeechFollow } from "@/hooks/use-speech-follow";
+import { useVoiceCommands } from "@/hooks/use-voice-commands";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Menu, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +26,7 @@ const Index = () => {
   const [followIdx, setFollowIdx] = useState<number | null>(null);
   const [isFs, setIsFs] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
+  const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
 
   const active = useMemo(
@@ -53,6 +57,38 @@ const Index = () => {
       toast.error("Speech recognition not supported in this browser. Try Chrome or Edge.");
     }
   }, [settings.followMode, speechSupported]);
+
+  // Voice commands
+  const handleVoiceCommand = useCallback((action: string) => {
+    switch (action) {
+      case "play":
+        setPlaying(true);
+        break;
+      case "pause":
+        setPlaying(false);
+        break;
+      case "restart":
+        setPlaying(false);
+        setFollowIdx(null);
+        window.dispatchEvent(new Event("prompter:reset"));
+        toast.success("Restarted");
+        break;
+      case "seek-forward":
+        seekPrompter("forward");
+        break;
+      case "seek-backward":
+        seekPrompter("backward");
+        break;
+      case "toggle-follow":
+        setSettings((s) => ({ ...s, followMode: !s.followMode }));
+        break;
+    }
+  }, [seekPrompter]);
+
+  useVoiceCommands({
+    enabled: settings.voiceCommandsEnabled && speechSupported,
+    onCommand: handleVoiceCommand,
+  });
 
   // Fullscreen API
   useEffect(() => {
@@ -237,6 +273,7 @@ const Index = () => {
             onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
             speechSupported={speechSupported}
             listening={listening}
+            onVoiceSettings={() => setIsVoiceSettingsOpen(true)}
           />
           {renderListeningBox("rounded-lg border border-primary/20 bg-card/40 px-3 py-2 font-mono text-[11px] text-muted-foreground")}
           <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.5fr)] xl:overflow-hidden">
@@ -284,6 +321,7 @@ const Index = () => {
                         onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
                         speechSupported={speechSupported}
                         listening={listening}
+                        onVoiceSettings={() => setIsVoiceSettingsOpen(true)}
                         singleRow
                       />
                     </div>
@@ -313,6 +351,16 @@ const Index = () => {
           </div>
         </section>
       </div>
+
+      {/* Voice Commands Dialog */}
+      <Dialog open={isVoiceSettingsOpen} onOpenChange={setIsVoiceSettingsOpen}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Voice Commands</DialogTitle>
+          </DialogHeader>
+          <VoiceCommandSettings />
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };
