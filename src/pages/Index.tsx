@@ -31,6 +31,7 @@ const Index = () => {
   const [playing, setPlaying] = useState(false);
   const [followIdx, setFollowIdx] = useState<number | null>(null);
   const [isFs, setIsFs] = useState(false);
+  const [isMobileFs, setIsMobileFs] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState("read");
@@ -107,12 +108,27 @@ const Index = () => {
   }, []);
 
   const toggleFs = useCallback(() => {
+    if (isMobile) {
+      setIsMobileFs((value) => !value);
+      return;
+    }
     if (!document.fullscreenElement) {
       stageWrapRef.current?.requestFullscreen?.().catch(() => {});
     } else {
       document.exitFullscreen?.().catch(() => {});
     }
-  }, []);
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!isMobileFs) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isMobileFs]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -201,6 +217,7 @@ const Index = () => {
 
   const wordCount = active.body.split(/\s+/).filter(Boolean).length;
   const minutes = Math.max(1, Math.round(wordCount / 140));
+  const isImmersive = isFs || isMobileFs;
 
   const resetPrompter = () => {
     setPlaying(false);
@@ -210,11 +227,13 @@ const Index = () => {
 
   const renderListeningBox = (className: string) =>
     settings.followMode ? (
-      <div className={className}>
+      <div className={`${className} flex items-start gap-3 overflow-hidden`}>
         <span className={listening ? "text-primary" : "text-amber-500"}>
           {listening ? "● LISTENING" : "○ MIC IDLE"}
         </span>
-        <span className="ml-3 italic opacity-70">{interim || "Say a word from the script to advance…"}</span>
+        <span className="min-w-0 flex-1 break-words italic opacity-70">
+          {interim || "Say a word from the script to advance…"}
+        </span>
       </div>
     ) : null;
 
@@ -223,7 +242,9 @@ const Index = () => {
       ref={stageWrapRef}
       className={
         "relative bg-background " +
-        (isFs ? "h-dvh w-screen" : "min-h-[52dvh] overflow-hidden rounded-2xl sm:min-h-[420px] xl:h-full xl:min-h-0")
+        (isImmersive
+          ? "fixed inset-0 z-50 h-dvh overflow-hidden rounded-none"
+          : "min-h-[52dvh] overflow-hidden rounded-2xl sm:min-h-[420px] xl:h-full xl:min-h-0")
       }
     >
       {settings.lightbox ? (
@@ -243,12 +264,12 @@ const Index = () => {
           followWordIndex={settings.followMode ? followIdx : null}
         />
       )}
-      {isFs && (
+      {isImmersive && (
         <>
           {renderListeningBox(
             "pointer-events-none absolute left-4 right-4 top-4 z-20 rounded-lg border border-primary/20 bg-card/70 px-3 py-2 font-mono text-[11px] text-muted-foreground backdrop-blur",
           )}
-          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center">
+          <div className="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-center pb-[max(env(safe-area-inset-bottom),0px)]">
             <div className="pointer-events-auto max-w-full">
               <ControlBar
                 settings={settings}
@@ -258,11 +279,11 @@ const Index = () => {
                 onRewind={() => seekPrompter("backward")}
                 onAdvance={() => seekPrompter("forward")}
                 onFullscreen={toggleFs}
-                isFullscreen={isFs}
+                isFullscreen={isImmersive}
                 onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
                 speechSupported={speechSupported}
                 listening={listening}
-                singleRow
+                singleRow={!isMobile}
               />
             </div>
           </div>
@@ -292,7 +313,7 @@ const Index = () => {
   );
 
   return (
-    <main className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+    <main className="flex h-dvh min-w-0 flex-col overflow-hidden bg-background text-foreground">
       <header className="border-b border-border/40 px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-3">
           <div className="flex items-start gap-2 sm:items-center sm:gap-3">
@@ -364,7 +385,7 @@ const Index = () => {
           />
         </aside>
 
-        <section className="flex min-h-0 w-full min-w-0 flex-col gap-3 overflow-y-auto xl:overflow-hidden">
+        <section className="flex min-h-0 w-full min-w-0 flex-col gap-3 overflow-x-hidden overflow-y-auto xl:overflow-hidden">
           <div className="sticky top-0 z-10 -mx-1 bg-background/85 px-1 pb-1 backdrop-blur md:static md:mx-0 md:bg-transparent md:px-0 md:pb-0">
             <ControlBar
               settings={settings}
@@ -374,7 +395,7 @@ const Index = () => {
               onRewind={() => seekPrompter("backward")}
               onAdvance={() => seekPrompter("forward")}
               onFullscreen={toggleFs}
-              isFullscreen={isFs}
+              isFullscreen={isImmersive}
               onChange={(patch) => setSettings((s) => ({ ...s, ...patch }))}
               speechSupported={speechSupported}
               listening={listening}
