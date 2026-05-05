@@ -124,7 +124,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-card paper-grain stage-vignette rounded-2xl"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-card paper-grain stage-vignette"
       style={{ boxShadow: "var(--shadow-stage)" }}
     >
       {/* focus line */}
@@ -134,10 +134,13 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       />
       <div
         ref={contentRef}
-        className="px-[12%] py-[40vh] scroll-mask"
+        className="scroll-mask"
         style={{
           transform,
           transformOrigin: "center center",
+          paddingInline: "clamp(1rem, 8vw, 6rem)",
+          paddingTop: "38vh",
+          paddingBottom: "42vh",
           fontSize: settings.fontSize,
           lineHeight: settings.lineHeight,
           willChange: "transform",

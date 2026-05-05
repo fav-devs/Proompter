@@ -87,7 +87,7 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-background paper-grain rounded-none"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-card paper-grain"
     >
       {/* center focus marker */}
       <div className="pointer-events-none absolute top-0 bottom-0 z-10" style={{ left: "40%" }}>
