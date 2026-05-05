@@ -47,7 +47,7 @@ export function ControlBar({
   };
   const containerClass = singleRow
     ? "inline-flex max-w-full flex-nowrap items-center gap-3 whitespace-nowrap rounded-xl border border-border/60 bg-card/80 px-3 py-2 backdrop-blur"
-    : "flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/80 px-3 py-3 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-3 md:rounded-xl md:py-2";
+    : "flex max-w-full flex-col gap-2 overflow-x-hidden rounded-2xl border border-border/60 bg-card/80 px-3 py-3 backdrop-blur md:flex-row md:flex-wrap md:items-center md:gap-3 md:rounded-xl md:py-2";
 
   return (
     <div className={containerClass}>
