@@ -37,6 +37,13 @@ const getRecognition = (): SpeechRecognitionLike | null => {
   return Ctor ? new Ctor() : null;
 };
 
+const isMobileSpeechEnvironment = () => {
+  if (typeof window === "undefined") return false;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches ?? false;
+  const mobileUa = /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+  return coarsePointer || mobileUa;
+};
+
 export const isSpeechSupported = () => {
   if (typeof window === "undefined") return false;
   const w = window as SpeechRecognitionWindow;
@@ -99,8 +106,9 @@ export function useSpeechFollow(opts: {
 
     const rec = getRecognition();
     if (!rec) { setError("Speech recognition not supported in this browser"); return; }
+    const isMobileSpeech = isMobileSpeechEnvironment();
 
-    rec.continuous     = true;
+    rec.continuous     = !isMobileSpeech;
     rec.interimResults = true;
     rec.lang           = navigator.language || "en-US";
 
@@ -108,6 +116,13 @@ export function useSpeechFollow(opts: {
     let restartTimer: ReturnType<typeof setTimeout> | null = null;
     rec.onend   = () => {
       if (!enabled) {
+        setListening(false);
+        return;
+      }
+      if (isMobileSpeech) {
+        // Mobile browsers often surface a permission/banner prompt on every
+        // recognition restart. Avoid the restart loop there and let follow mode
+        // fall back to an idle state instead of repeatedly re-requesting access.
         setListening(false);
         return;
       }
