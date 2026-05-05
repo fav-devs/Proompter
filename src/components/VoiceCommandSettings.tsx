@@ -65,7 +65,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="space-y-2">
         <label className="block font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Wake Word
@@ -74,7 +74,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
           value={config.wakeWord}
           onChange={(e) => updateWakeWord(e.target.value)}
           placeholder="e.g., prompter"
-          className="font-mono text-sm"
+          className="h-11 font-mono text-sm"
         />
         <p className="text-xs text-muted-foreground">
           Say this word before a command, e.g., "{config.wakeWord} play"
@@ -82,7 +82,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <label className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
             Commands
           </label>
@@ -90,7 +90,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
             size="sm"
             variant="outline"
             onClick={resetToDefaults}
-            className="text-xs"
+            className="w-full text-xs sm:w-auto"
           >
             Reset defaults
           </Button>
@@ -98,7 +98,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
 
         <div className="space-y-2 max-h-64 overflow-y-auto">
           {config.commands.map((cmd) => (
-            <div key={cmd.id} className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/20 p-2">
+            <div key={cmd.id} className="flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/20 p-3 sm:flex-row sm:items-center">
               <span className="min-w-fit font-mono text-xs text-muted-foreground">
                 {config.wakeWord}
               </span>
@@ -106,15 +106,15 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
                 value={cmd.command}
                 onChange={(e) => updateCommand(cmd.id, e.target.value)}
                 placeholder="command"
-                className="h-7 font-mono text-xs flex-1"
+                className="h-10 flex-1 font-mono text-sm sm:h-7 sm:text-xs"
               />
-              <span className="min-w-fit font-mono text-xs text-primary">
+              <span className="min-w-fit rounded border border-primary/20 px-2 py-1 font-mono text-xs text-primary sm:border-0 sm:px-0 sm:py-0">
                 {cmd.action}
               </span>
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-7 w-7"
+                className="h-8 w-8 self-end sm:h-7 sm:w-7 sm:self-auto"
                 onClick={() => deleteCommand(cmd.id)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -127,7 +127,7 @@ export function VoiceCommandSettings({ onConfigChange }: Props) {
           size="sm"
           variant="outline"
           onClick={addCommand}
-          className="w-full"
+          className="h-10 w-full"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add command
