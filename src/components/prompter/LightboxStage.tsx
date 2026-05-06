@@ -38,11 +38,28 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
 
       targetRef.current = nextOffset;
       setOffset(nextOffset);
+
+      const focusX = nextOffset + container.clientWidth * 0.4;
+      let bestIndex = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (let i = 0; i < words.length; i++) {
+        const el = wordRefs.current[i];
+        if (!el) continue;
+        const centerX = el.offsetLeft + el.offsetWidth / 2;
+        const distance = Math.abs(centerX - focusX);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestIndex = i + 1;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("prompter:cursor", { detail: { index: bestIndex } }));
     };
 
     window.addEventListener("prompter:seek", onSeek);
     return () => window.removeEventListener("prompter:seek", onSeek);
-  }, []);
+  }, [words]);
 
   useEffect(() => {
     let raf = 0;
@@ -108,8 +125,16 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
           }}
         >
           {words.map((w, i) => {
-            const isCurrent = settings.followMode && followWordIndex != null && i === followWordIndex - 1;
-            const isPast = settings.followMode && followWordIndex != null && i < followWordIndex - 1;
+            const isCurrent =
+              settings.followMode &&
+              settings.followHighlight &&
+              followWordIndex != null &&
+              i === followWordIndex - 1;
+            const isPast =
+              settings.followMode &&
+              settings.followHighlight &&
+              followWordIndex != null &&
+              i < followWordIndex - 1;
             return (
               <span
                 key={i}

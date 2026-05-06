@@ -45,11 +45,31 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
 
       targetRef.current = nextOffset;
       setOffset(nextOffset);
+
+      const focusY = nextOffset + container.clientHeight * 0.38;
+      let cursor = 0;
+      let bestCursor = 0;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (let i = 0; i < words.length; i++) {
+        if (/^\s+$/.test(words[i])) continue;
+        cursor++;
+        const el = wordRefs.current[i];
+        if (!el) continue;
+        const centerY = el.offsetTop + el.offsetHeight / 2;
+        const distance = Math.abs(centerY - focusY);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          bestCursor = cursor;
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("prompter:cursor", { detail: { index: bestCursor } }));
     };
 
     window.addEventListener("prompter:seek", onSeek);
     return () => window.removeEventListener("prompter:seek", onSeek);
-  }, []);
+  }, [words]);
 
   // Animation loop
   useEffect(() => {
@@ -108,7 +128,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
 
   // current word for highlight (follow mode)
   const highlightDomIdx = useMemo(() => {
-    if (!settings.followMode || followWordIndex == null) return -1;
+    if (!settings.followMode || !settings.followHighlight || followWordIndex == null) return -1;
     let n = -1;
     for (let i = 0; i < words.length; i++) {
       if (!/^\s+$/.test(words[i])) {
@@ -117,7 +137,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       }
     }
     return -1;
-  }, [followWordIndex, settings.followMode, words]);
+  }, [followWordIndex, settings.followHighlight, settings.followMode, words]);
 
   let wIdx = -1;
 
@@ -154,6 +174,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
           const isCurrent = i === highlightDomIdx;
           const isPast =
             settings.followMode &&
+            settings.followHighlight &&
             followWordIndex != null &&
             wIdx < followWordIndex - 1 &&
             !isSpace;
