@@ -92,6 +92,14 @@ export function useSpeechFollow(opts: {
     [onWordIndex],
   );
 
+  const setCursor = useCallback((index: number) => {
+    const next = Math.max(0, Math.min(wordsRef.current.length, Math.floor(index)));
+    committedRef.current = next;
+    visualRef.current = next;
+    prevInterimLenRef.current = 0;
+    setInterim("");
+  }, []);
+
   useEffect(() => {
     if (!enabled) {
       recRef.current?.stop?.();
@@ -171,7 +179,7 @@ export function useSpeechFollow(opts: {
 
           if (anchoredCursor !== null && anchoredCursor !== visualRef.current) {
             emitVisual(anchoredCursor);
-          } else if (Math.abs(nextCommitted - visualRef.current) > 2) {
+          } else if (nextCommitted !== visualRef.current) {
             emitVisual(nextCommitted);
           }
 
@@ -191,6 +199,11 @@ export function useSpeechFollow(opts: {
       // the words that are NEW since the last event (the delta).
       const currWords = normalizeSpeech(interimText);
       const prevLen   = prevInterimLenRef.current;
+      const interimCursor = advanceWordByWord(wordsRef.current, committedRef.current, currWords);
+
+      if (interimCursor > visualRef.current) {
+        emitVisual(interimCursor);
+      }
 
       for (let i = prevLen; i < currWords.length; i++) {
         const next = tryMatchWord(wordsRef.current, visualRef.current, currWords[i]);
@@ -211,5 +224,5 @@ export function useSpeechFollow(opts: {
     };
   }, [enabled, emitVisual]);
 
-  return { listening, interim, error };
+  return { listening, interim, error, setCursor };
 }
