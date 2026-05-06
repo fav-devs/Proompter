@@ -46,14 +46,18 @@ const Index = () => {
 
   useEffect(() => { saveScripts(scripts); }, [scripts]);
   useEffect(() => { saveSettings(settings); }, [settings]);
-  useEffect(() => { setFollowIdx(null); }, [activeId]);
 
   const speechSupported = isSpeechSupported();
-  const { listening, interim, error: speechError } = useSpeechFollow({
+  const { listening, interim, error: speechError, setCursor: setSpeechCursor } = useSpeechFollow({
     enabled: settings.followMode,
     scriptText: active?.body ?? "",
     onWordIndex: setFollowIdx,
   });
+
+  useEffect(() => {
+    setFollowIdx(null);
+    setSpeechCursor(0);
+  }, [activeId, active?.body, setSpeechCursor]);
 
   useEffect(() => {
     if (speechError) toast.error(`Mic: ${speechError}`);
@@ -65,8 +69,20 @@ const Index = () => {
     }
   }, [settings.followMode, speechSupported]);
 
+  useEffect(() => {
+    const onCursor = (event: Event) => {
+      const index = (event as CustomEvent<{ index?: number }>).detail?.index;
+      if (!Number.isFinite(index)) return;
+      const next = Math.max(0, Math.floor(index ?? 0));
+      setSpeechCursor(next);
+      setFollowIdx(next > 0 ? next : null);
+    };
+
+    window.addEventListener("prompter:cursor", onCursor);
+    return () => window.removeEventListener("prompter:cursor", onCursor);
+  }, [setSpeechCursor]);
+
   const seekPrompter = useCallback((direction: "backward" | "forward") => {
-    setFollowIdx(null);
     window.dispatchEvent(new CustomEvent("prompter:seek", { detail: { direction } }));
   }, []);
 
@@ -81,6 +97,7 @@ const Index = () => {
       case "restart":
         setPlaying(false);
         setFollowIdx(null);
+        setSpeechCursor(0);
         window.dispatchEvent(new Event("prompter:reset"));
         toast.success("Restarted");
         break;
@@ -94,7 +111,7 @@ const Index = () => {
         setSettings((s) => ({ ...s, followMode: !s.followMode }));
         break;
     }
-  }, [seekPrompter]);
+  }, [seekPrompter, setSpeechCursor]);
 
   useVoiceCommands({
     enabled: settings.voiceCommandsEnabled && speechSupported,
@@ -143,13 +160,14 @@ const Index = () => {
       if (e.key.toLowerCase() === "r") {
         setPlaying(false);
         setFollowIdx(null);
+        setSpeechCursor(0);
         window.dispatchEvent(new Event("prompter:reset"));
       }
     };
 
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [seekPrompter, toggleFs]);
+  }, [seekPrompter, setSpeechCursor, toggleFs]);
 
   useEffect(() => {
     const handleReset = () => setResetTick((t) => t + 1);
@@ -222,6 +240,7 @@ const Index = () => {
   const resetPrompter = () => {
     setPlaying(false);
     setFollowIdx(null);
+    setSpeechCursor(0);
     setResetTick((t) => t + 1);
   };
 
