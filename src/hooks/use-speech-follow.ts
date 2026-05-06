@@ -68,8 +68,9 @@ export function useSpeechFollow(opts: {
   const committedRef = useRef(0);
   const visualRef    = useRef(0);
 
-  // How many words the previous interim event had (to detect new words).
-  const prevInterimLenRef = useRef(0);
+  // Previous interim words, used to detect whether Chrome appended or rewrote
+  // the live transcript between recognition events.
+  const prevInterimWordsRef = useRef<string[]>([]);
 
   const [listening, setListening] = useState(false);
   const [interim, setInterim]     = useState("");
@@ -79,7 +80,7 @@ export function useSpeechFollow(opts: {
     wordsRef.current       = normalizeSpeech(scriptText);
     committedRef.current   = 0;
     visualRef.current      = 0;
-    prevInterimLenRef.current = 0;
+    prevInterimWordsRef.current = [];
   }, [scriptText]);
 
   const emitVisual = useCallback(
@@ -96,7 +97,7 @@ export function useSpeechFollow(opts: {
     const next = Math.max(0, Math.min(wordsRef.current.length, Math.floor(index)));
     committedRef.current = next;
     visualRef.current = next;
-    prevInterimLenRef.current = 0;
+    prevInterimWordsRef.current = [];
     setInterim("");
   }, []);
 
@@ -106,7 +107,7 @@ export function useSpeechFollow(opts: {
       recRef.current = null;
       committedRef.current = 0;
       visualRef.current    = 0;
-      prevInterimLenRef.current = 0;
+      prevInterimWordsRef.current = [];
       setListening(false);
       setInterim("");
       return;
@@ -149,13 +150,13 @@ export function useSpeechFollow(opts: {
     };
 
     rec.onresult = (event) => {
-      let interimText = "";
+      const interimParts: string[] = [];
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      for (let i = 0; i < event.results.length; i++) {
         const r = event.results[i];
         const t = r[0].transcript;
 
-        if (r.isFinal) {
+        if (r.isFinal && i >= event.resultIndex) {
           // ── Final: authoritative correction pass ──────────────────────────
           // Run from committed (not visual) so we always correct from ground
           // truth even if interim drifted.
@@ -184,33 +185,47 @@ export function useSpeechFollow(opts: {
           }
 
           // Reset interim tracking for the next utterance.
-          prevInterimLenRef.current = 0;
+          prevInterimWordsRef.current = [];
           setInterim("");
-        } else {
-          interimText = t;
+        } else if (!r.isFinal) {
+          interimParts.push(t);
         }
       }
 
+      const interimText = interimParts.join(" ");
       if (!interimText) return;
       setInterim(interimText);
 
-      // ── Interim: stream each newly detected word immediately ──────────────
-      // Chrome accumulates words in the interim transcript. We process only
-      // the words that are NEW since the last event (the delta).
+      // ── Interim: keep moving during long, unpaused speech ─────────────────
+      // Chrome may append to one interim transcript, rewrite it, or roll the
+      // active interim window forward before it emits a final result. Match both
+      // from the last final cursor and the current visual cursor so the stage
+      // keeps moving even when finalization waits for a pause.
       const currWords = normalizeSpeech(interimText);
-      const prevLen   = prevInterimLenRef.current;
-      const interimCursor = advanceWordByWord(wordsRef.current, committedRef.current, currWords);
+      const prevWords = prevInterimWordsRef.current;
+      const appendsPrevious =
+        prevWords.length <= currWords.length &&
+        prevWords.every((word, index) => word === currWords[index]);
 
-      if (interimCursor > visualRef.current) {
-        emitVisual(interimCursor);
+      const fromCommitted = advanceWordByWord(wordsRef.current, committedRef.current, currWords);
+      const fromVisual = advanceWordByWord(wordsRef.current, visualRef.current, currWords);
+      const phraseCursor = Math.max(fromCommitted, fromVisual);
+      if (phraseCursor > visualRef.current) emitVisual(phraseCursor);
+
+      const deltaWords = appendsPrevious ? currWords.slice(prevWords.length) : currWords;
+      if (deltaWords.length) {
+        const deltaCursor = advanceWordByWord(wordsRef.current, visualRef.current, deltaWords);
+        if (deltaCursor > visualRef.current) {
+          emitVisual(deltaCursor);
+        } else {
+          for (const word of deltaWords) {
+            const next = tryMatchWord(wordsRef.current, visualRef.current, word, 2);
+            if (next !== null) emitVisual(next);
+          }
+        }
       }
 
-      for (let i = prevLen; i < currWords.length; i++) {
-        const next = tryMatchWord(wordsRef.current, visualRef.current, currWords[i]);
-        if (next !== null) emitVisual(next);
-      }
-
-      prevInterimLenRef.current = currWords.length;
+      prevInterimWordsRef.current = currWords;
     };
 
     recRef.current = rec;
