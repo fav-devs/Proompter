@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Menu, Sparkles } from "lucide-react";
+import { Globe2, Menu, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { VoiceCommandSettings } from "@/components/VoiceCommandSettings";
@@ -13,8 +13,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { isSpeechSupported, useSpeechFollow } from "@/hooks/use-speech-follow";
-import { useVoiceCommands } from "@/hooks/use-voice-commands";
+import { isSpeechSupported, useUnifiedSpeech } from "@/hooks/use-unified-speech";
 import {
   loadScripts,
   loadSettings,
@@ -36,7 +35,10 @@ const Index = () => {
   const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState("read");
   const [resetTick, setResetTick] = useState(0);
+  const [wakeWordPulse, setWakeWordPulse] = useState<string | null>(null);
   const stageWrapRef = useRef<HTMLDivElement>(null);
+  const wakeWordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setSpeechCursorRef = useRef<(index: number) => void>(() => {});
   const isMobile = useIsMobile();
 
   const active = useMemo(
@@ -48,39 +50,6 @@ const Index = () => {
   useEffect(() => { saveSettings(settings); }, [settings]);
 
   const speechSupported = isSpeechSupported();
-  const { listening, interim, error: speechError, setCursor: setSpeechCursor } = useSpeechFollow({
-    enabled: settings.followMode,
-    scriptText: active?.body ?? "",
-    onWordIndex: setFollowIdx,
-  });
-
-  useEffect(() => {
-    setFollowIdx(null);
-    setSpeechCursor(0);
-  }, [activeId, active?.body, setSpeechCursor]);
-
-  useEffect(() => {
-    if (speechError) toast.error(`Mic: ${speechError}`);
-  }, [speechError]);
-
-  useEffect(() => {
-    if (settings.followMode && !speechSupported) {
-      toast.error("Speech recognition not supported in this browser. Try Chrome or Edge.");
-    }
-  }, [settings.followMode, speechSupported]);
-
-  useEffect(() => {
-    const onCursor = (event: Event) => {
-      const index = (event as CustomEvent<{ index?: number }>).detail?.index;
-      if (!Number.isFinite(index)) return;
-      const next = Math.max(0, Math.floor(index ?? 0));
-      setSpeechCursor(next);
-      setFollowIdx(next > 0 ? next : null);
-    };
-
-    window.addEventListener("prompter:cursor", onCursor);
-    return () => window.removeEventListener("prompter:cursor", onCursor);
-  }, [setSpeechCursor]);
 
   const seekPrompter = useCallback((direction: "backward" | "forward") => {
     window.dispatchEvent(new CustomEvent("prompter:seek", { detail: { direction } }));
@@ -97,7 +66,7 @@ const Index = () => {
       case "restart":
         setPlaying(false);
         setFollowIdx(null);
-        setSpeechCursor(0);
+        setSpeechCursorRef.current(0);
         window.dispatchEvent(new Event("prompter:reset"));
         toast.success("Restarted");
         break;
@@ -111,12 +80,75 @@ const Index = () => {
         setSettings((s) => ({ ...s, followMode: !s.followMode }));
         break;
     }
-  }, [seekPrompter, setSpeechCursor]);
+  }, [seekPrompter]);
 
-  useVoiceCommands({
-    enabled: settings.voiceCommandsEnabled && speechSupported,
+  const showWakeWordPulse = useCallback((wakeWord: string) => {
+    setWakeWordPulse(wakeWord);
+    if (wakeWordTimerRef.current !== null) clearTimeout(wakeWordTimerRef.current);
+    wakeWordTimerRef.current = setTimeout(() => {
+      setWakeWordPulse(null);
+      wakeWordTimerRef.current = null;
+    }, 1600);
+  }, []);
+
+  const { listening, interim, error: speechError, setCursor: setSpeechCursor } = useUnifiedSpeech({
+    followEnabled: settings.followMode && speechSupported,
+    commandsEnabled: settings.voiceCommandsEnabled && speechSupported,
+    scriptText: active?.body ?? "",
+    onWordIndex: setFollowIdx,
     onCommand: handleVoiceCommand,
+    onWakeWord: showWakeWordPulse,
   });
+
+  useEffect(() => {
+    setSpeechCursorRef.current = setSpeechCursor;
+  }, [setSpeechCursor]);
+
+  useEffect(() => {
+    setFollowIdx(null);
+    setSpeechCursor(0);
+  }, [activeId, active?.body, setSpeechCursor]);
+
+  useEffect(() => {
+    if (speechError) toast.error(`Mic: ${speechError}`);
+  }, [speechError]);
+
+  useEffect(() => {
+    if ((settings.followMode || settings.voiceCommandsEnabled) && !speechSupported) {
+      toast.error("Speech recognition not supported in this browser. Try Chrome or Edge.");
+    }
+  }, [settings.followMode, settings.voiceCommandsEnabled, speechSupported]);
+
+  useEffect(() => {
+    const onCursor = (event: Event) => {
+      const index = (event as CustomEvent<{ index?: number }>).detail?.index;
+      if (!Number.isFinite(index)) return;
+      const next = Math.max(0, Math.floor(index ?? 0));
+      setSpeechCursor(next);
+      setFollowIdx(next > 0 ? next : null);
+    };
+
+    window.addEventListener("prompter:cursor", onCursor);
+    return () => window.removeEventListener("prompter:cursor", onCursor);
+  }, [setSpeechCursor]);
+
+  useEffect(() => {
+    const onFocusPosition = (event: Event) => {
+      const position = (event as CustomEvent<{ position?: number }>).detail?.position;
+      if (!Number.isFinite(position)) return;
+      const next = Math.min(72, Math.max(22, position ?? 38));
+      setSettings((s) => ({ ...s, focusPosition: next }));
+    };
+
+    window.addEventListener("prompter:focus-position", onFocusPosition);
+    return () => window.removeEventListener("prompter:focus-position", onFocusPosition);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (wakeWordTimerRef.current !== null) clearTimeout(wakeWordTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const onFs = () => setIsFs(Boolean(document.fullscreenElement));
@@ -450,6 +482,20 @@ const Index = () => {
           <VoiceCommandSettings />
         </DialogContent>
       </Dialog>
+
+      {wakeWordPulse && (
+        <div className="pointer-events-none fixed left-1/2 top-5 z-[70] -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full border border-primary/35 bg-card/95 px-3 py-2 text-primary shadow-lg">
+            <span className="relative flex h-7 w-7 items-center justify-center rounded-full border border-primary/30">
+              <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+              <Globe2 className="relative h-4 w-4" />
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+              {wakeWordPulse}
+            </span>
+          </div>
+        </div>
+      )}
     </main>
   );
 };
