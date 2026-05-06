@@ -89,6 +89,22 @@ export const fuzzyMatchCommand = (
   return distance <= maxDistance;
 };
 
+export const transcriptHasWakeWord = (heardText: string, wakeWord: string): boolean => {
+  const heardWords = heardText.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const wakeWords = wakeWord.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!heardWords.length || !wakeWords.length) return false;
+
+  for (let i = 0; i <= heardWords.length - wakeWords.length; i++) {
+    const phrase = heardWords.slice(i, i + wakeWords.length).join(" ");
+    if (phrase === wakeWords.join(" ")) return true;
+    if (levenshteinDistance(phrase, wakeWords.join(" ")) <= Math.ceil(wakeWords.join(" ").length * 0.25)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 // Simple levenshtein distance
 const levenshteinDistance = (a: string, b: string): number => {
   if (a === b) return 0;
