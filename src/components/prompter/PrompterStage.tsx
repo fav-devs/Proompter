@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback, type PointerEvent as ReactPointerEvent } from "react";
 import type { Settings } from "@/lib/teleprompter-store";
 
 interface Props {
@@ -20,6 +20,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
 
   const words = useMemo(() => text.split(/(\s+)/), [text]);
   const wordOnly = useMemo(() => text.split(/\s+/).filter(Boolean), [text]);
+  const focusRatio = settings.focusPosition / 100;
 
   useEffect(() => {
     onWordCount?.(wordOnly.length);
@@ -38,7 +39,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       const content = contentRef.current;
       if (!detail || !container || !content) return;
 
-      const max = Math.max(0, content.scrollHeight - container.clientHeight * 0.45);
+      const max = Math.max(0, content.scrollHeight - container.clientHeight * (1 - focusRatio + 0.07));
       const step = container.clientHeight * 0.28;
       const direction = detail.direction === "backward" ? -1 : 1;
       const nextOffset = Math.min(max, Math.max(0, targetRef.current + step * direction));
@@ -46,7 +47,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       targetRef.current = nextOffset;
       setOffset(nextOffset);
 
-      const focusY = nextOffset + container.clientHeight * 0.38;
+      const focusY = nextOffset + container.clientHeight * focusRatio;
       let cursor = 0;
       let bestCursor = 0;
       let bestDistance = Number.POSITIVE_INFINITY;
@@ -69,7 +70,22 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
 
     window.addEventListener("prompter:seek", onSeek);
     return () => window.removeEventListener("prompter:seek", onSeek);
-  }, [words]);
+  }, [focusRatio, words]);
+
+  const updateFocusPosition = useCallback((clientY: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const percent = ((clientY - rect.top) / rect.height) * 100;
+    const next = Math.min(72, Math.max(22, percent));
+    window.dispatchEvent(new CustomEvent("prompter:focus-position", { detail: { position: next } }));
+  }, []);
+
+  const onFocusPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateFocusPosition(event.clientY);
+  }, [updateFocusPosition]);
 
   // Animation loop
   useEffect(() => {
@@ -82,7 +98,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       const container = containerRef.current;
       const content = contentRef.current;
       if (container && content) {
-        const max = Math.max(0, content.scrollHeight - container.clientHeight * 0.45);
+        const max = Math.max(0, content.scrollHeight - container.clientHeight * (1 - focusRatio + 0.07));
 
         if (settings.followMode && followWordIndex != null) {
           // center the currently matched word instead of the next word ahead
@@ -97,7 +113,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
           }
           const el = wordRefs.current[domIdx];
           if (el) {
-            const focus = container.clientHeight * 0.38;
+            const focus = container.clientHeight * focusRatio;
             targetRef.current = Math.min(max, Math.max(0, el.offsetTop - focus));
           }
         } else if (playing) {
@@ -118,7 +134,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       cancelAnimationFrame(raf);
       lastTs.current = null;
     };
-  }, [playing, settings.speed, settings.followMode, followWordIndex, words, wordOnly.length]);
+  }, [playing, settings.speed, settings.followMode, followWordIndex, words, wordOnly.length, focusRatio]);
 
   const transform = useMemo(() => {
     const sx = settings.mirrorH ? -1 : 1;
@@ -147,11 +163,23 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       className="relative h-full w-full overflow-hidden rounded-2xl bg-card paper-grain stage-vignette"
       style={{ boxShadow: "var(--shadow-stage)" }}
     >
-      {/* focus line */}
       <div
-        className="pointer-events-none absolute left-0 right-0 z-10 border-t border-primary/40"
-        style={{ top: "38%", boxShadow: "0 0 24px hsl(var(--primary) / 0.4)" }}
-      />
+        className="group absolute left-0 right-0 z-20 flex h-5 -translate-y-1/2 cursor-row-resize items-center"
+        style={{ top: `${settings.focusPosition}%` }}
+        onPointerDown={onFocusPointerDown}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFocusPosition(event.clientY);
+        }}
+        title="Drag focus line"
+      >
+        <div
+          className="pointer-events-none w-full border-t border-primary/45 transition-colors group-hover:border-primary"
+          style={{ boxShadow: "0 0 24px hsl(var(--primary) / 0.4)" }}
+        />
+        <div className="pointer-events-none absolute left-3 rounded border border-primary/35 bg-background/80 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-primary opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+          Drag
+        </div>
+      </div>
       <div
         ref={contentRef}
         className="scroll-mask"
@@ -159,8 +187,8 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
           transform,
           transformOrigin: "center center",
           paddingInline: "clamp(1rem, 8vw, 6rem)",
-          paddingTop: "38vh",
-          paddingBottom: "42vh",
+          paddingTop: `${settings.focusPosition}vh`,
+          paddingBottom: `${100 - settings.focusPosition + 4}vh`,
           fontSize: settings.fontSize,
           lineHeight: settings.lineHeight,
           willChange: "transform",
