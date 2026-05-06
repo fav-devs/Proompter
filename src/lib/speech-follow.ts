@@ -203,6 +203,17 @@ export const findNearbyCursorAnchor = (
 };
 
 /**
+ * Advance through nearby script words only. Used for interim transcripts, where
+ * wide resync is too unstable because repeated words can appear later in the
+ * script before the recognizer has finalized the phrase.
+ */
+export const advanceNearbyWordByWord = (
+  scriptWords: string[],
+  cursor: number,
+  spokenWords: string[],
+): number => scanSequential(scriptWords, cursor, spokenWords)[0];
+
+/**
  * Advance `cursor` through `scriptWords` by matching each word in `spokenWords`.
  * Used for final (confirmed) transcripts — full correction pass with resync.
  */

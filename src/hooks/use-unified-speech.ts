@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  advanceNearbyWordByWord,
   advanceWordByWord,
   findNearbyCursorAnchor,
   normalizeSpeech,
@@ -174,19 +175,19 @@ export function useUnifiedSpeech(opts: {
       prevWords.length <= currWords.length &&
       prevWords.every((word, index) => word === currWords[index]);
 
-    const fromCommitted = advanceWordByWord(wordsRef.current, committedRef.current, currWords);
-    const fromVisual = advanceWordByWord(wordsRef.current, visualRef.current, currWords);
+    const fromCommitted = advanceNearbyWordByWord(wordsRef.current, committedRef.current, currWords);
+    const fromVisual = advanceNearbyWordByWord(wordsRef.current, visualRef.current, currWords);
     const phraseCursor = Math.max(fromCommitted, fromVisual);
     if (phraseCursor > visualRef.current) emitVisual(phraseCursor);
 
     const deltaWords = appendsPrevious ? currWords.slice(prevWords.length) : currWords;
     if (deltaWords.length) {
-      const deltaCursor = advanceWordByWord(wordsRef.current, visualRef.current, deltaWords);
+      const deltaCursor = advanceNearbyWordByWord(wordsRef.current, visualRef.current, deltaWords);
       if (deltaCursor > visualRef.current) {
         emitVisual(deltaCursor);
       } else {
         for (const word of deltaWords) {
-          const next = tryMatchWord(wordsRef.current, visualRef.current, word, 2);
+          const next = tryMatchWord(wordsRef.current, visualRef.current, word);
           if (next !== null) emitVisual(next);
         }
       }

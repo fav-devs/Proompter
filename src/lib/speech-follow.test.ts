@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  advanceNearbyWordByWord,
   advanceWordByWord,
   findNearbyCursorAnchor,
   normalizeSpeech,
@@ -39,6 +40,19 @@ describe("tryMatchWord", () => {
   it("does not let a signal word jump two script words during interim", () => {
     const start = after("we");
     expect(tryMatchWord(script, start, "walk")).toBeNull();
+  });
+});
+
+describe("advanceNearbyWordByWord", () => {
+  it("does not wide-resync interim speech to a repeated later phrase", () => {
+    const repeated = normalizeSpeech("alpha one two beta steady pace later alpha one two finish");
+    const cursor = advanceNearbyWordByWord(repeated, 0, normalizeSpeech("later alpha one two"));
+    expect(cursor).toBe(0);
+  });
+
+  it("still advances nearby interim speech", () => {
+    const cursor = advanceNearbyWordByWord(script, 0, normalizeSpeech("today we are going"));
+    expect(cursor).toBe(after("going"));
   });
 });
 
