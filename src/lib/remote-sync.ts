@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type RemoteRole = "host" | "client";
 
@@ -17,11 +17,15 @@ function genCode(): string {
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
 }
 
-// Host: debounced push whenever script body changes
-export function useRemoteHost(remote: RemoteState, body: string) {
+// Host: debounced push on script change + poll for client pings every 2s
+export function useRemoteHost(remote: RemoteState, body: string, onPing: () => void) {
   const lastPushed = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onPingRef = useRef(onPing);
+  onPingRef.current = onPing;
 
+  // Push script on change
   useEffect(() => {
     if (!remote || remote.role !== "host") return;
     if (lastPushed.current === body) return;
@@ -35,16 +39,28 @@ export function useRemoteHost(remote: RemoteState, body: string) {
           body: JSON.stringify({ body }),
         });
         lastPushed.current = body;
-      } catch {
-        // silently ignore — next change will retry
-      }
+      } catch { /* retry on next change */ }
     }, 600);
 
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [remote, body]);
+
+  // Poll for client pings
+  useEffect(() => {
+    if (!remote || remote.role !== "host") return;
+    pingInterval.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${apiBase()}?code=${remote.code}&ping=1`);
+        if (!res.ok) return;
+        const { pending } = await res.json();
+        if (pending) onPingRef.current();
+      } catch { /* ignore */ }
+    }, 2000);
+    return () => { if (pingInterval.current) clearInterval(pingInterval.current); };
+  }, [remote]);
 }
 
-// Client: poll every 3s, manual reload via returned fn
+// Client: manual reload + send ping to request host push
 export function useRemoteClient(
   remote: RemoteState,
   onBody: (body: string) => void,
@@ -52,10 +68,9 @@ export function useRemoteClient(
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const reload = useCallback(async () => {
-    if (!remote || remote.role !== "client") return;
+  const pull = useCallback(async (code: string) => {
     try {
-      const res = await fetch(`${apiBase()}?code=${remote.code}`);
+      const res = await fetch(`${apiBase()}?code=${code}`);
       if (!res.ok) { setError(res.status === 404 ? "Room not found" : "Sync error"); return; }
       const data: { body: string; updatedAt: number } = await res.json();
       onBody(data.body);
@@ -64,7 +79,16 @@ export function useRemoteClient(
     } catch {
       setError("Network error");
     }
-  }, [remote, onBody]);
+  }, [onBody]);
+
+  // Ping host then pull after a short delay for the host to push
+  const reload = useCallback(async () => {
+    if (!remote || remote.role !== "client") return;
+    try {
+      await fetch(`${apiBase()}?code=${remote.code}&ping=1`, { method: "POST" });
+    } catch { /* ignore */ }
+    setTimeout(() => pull(remote.code), 1500);
+  }, [remote, pull]);
 
   return { reload, lastSync, error };
 }

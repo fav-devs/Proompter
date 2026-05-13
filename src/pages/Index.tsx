@@ -117,8 +117,18 @@ const Index = () => {
     if (speechError) toast.error(`Mic: ${speechError}`);
   }, [speechError]);
 
-  // Remote sync — host pushes script on change, client polls
-  useRemoteHost(remote, active?.body ?? "");
+  // Remote sync — host pushes on change + on client ping; client pulls manually
+  const pushNow = useCallback(async () => {
+    if (!remote || remote.role !== "host" || !active) return;
+    try {
+      await fetch(`/api/sync?code=${remote.code}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: active.body }),
+      });
+    } catch { /* ignore */ }
+  }, [remote, active]);
+  useRemoteHost(remote, active?.body ?? "", pushNow);
   const { reload: reloadFromHost, error: syncError } = useRemoteClient(
     remote,
     useCallback((body: string) => {
