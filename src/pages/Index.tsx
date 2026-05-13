@@ -284,6 +284,22 @@ const Index = () => {
   const minutes = Math.max(1, Math.round(wordCount / 140));
   const isImmersive = isFs || isMobileFs;
 
+  // Keep screen awake while in fullscreen using the Screen Wake Lock API
+  useEffect(() => {
+    if (!isImmersive || !("wakeLock" in navigator)) return;
+    let lock: WakeLockSentinel | null = null;
+    navigator.wakeLock.request("screen").then((l) => { lock = l; }).catch(() => {});
+    const reacquire = () => {
+      if (document.visibilityState === "visible")
+        navigator.wakeLock.request("screen").then((l) => { lock = l; }).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", reacquire);
+    return () => {
+      document.removeEventListener("visibilitychange", reacquire);
+      lock?.release().catch(() => {});
+    };
+  }, [isImmersive]);
+
   const resetPrompter = () => {
     setPlaying(false);
     setFollowIdx(null);
