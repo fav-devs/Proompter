@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 export type RemoteRole = "host" | "client";
 
@@ -49,13 +49,13 @@ export function useRemoteClient(
   remote: RemoteState,
   onBody: (body: string) => void,
 ) {
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetch_ = useCallback(async (code: string) => {
+  const reload = useCallback(async () => {
+    if (!remote || remote.role !== "client") return;
     try {
-      const res = await fetch(`${apiBase()}?code=${code}`);
+      const res = await fetch(`${apiBase()}?code=${remote.code}`);
       if (!res.ok) { setError(res.status === 404 ? "Room not found" : "Sync error"); return; }
       const data: { body: string; updatedAt: number } = await res.json();
       onBody(data.body);
@@ -64,21 +64,7 @@ export function useRemoteClient(
     } catch {
       setError("Network error");
     }
-  }, [onBody]);
-
-  const reload = useCallback(() => {
-    if (remote?.role === "client") fetch_(remote.code);
-  }, [remote, fetch_]);
-
-  useEffect(() => {
-    if (!remote || remote.role !== "client") {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      return;
-    }
-    fetch_(remote.code);
-    intervalRef.current = setInterval(() => fetch_(remote.code), 3000);
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [remote, fetch_]);
+  }, [remote, onBody]);
 
   return { reload, lastSync, error };
 }
