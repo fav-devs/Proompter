@@ -19,6 +19,7 @@ export type Settings = {
   focusPosition: number;
   lightbox: boolean; // horizontal scrolling mode
   lightboxScale: number;
+  structuredMode: boolean; // preserve script line/paragraph breaks
   voiceCommandsEnabled: boolean;
 };
 
@@ -33,6 +34,7 @@ export const defaultSettings: Settings = {
   focusPosition: 38,
   lightbox: false,
   lightboxScale: 1.4,
+  structuredMode: false,
   voiceCommandsEnabled: false,
 };
 

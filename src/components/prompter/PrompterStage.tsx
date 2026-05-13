@@ -207,6 +207,14 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
             wIdx < followWordIndex - 1 &&
             wIdx >= recentPastWordStart &&
             !isSpace;
+          if (isSpace && settings.structuredMode) {
+            if (w.includes("\n\n")) {
+              return <div key={i} ref={(el) => (wordRefs.current[i] = el as unknown as HTMLSpanElement)} style={{ height: "1.1em" }} />;
+            }
+            if (w.includes("\n")) {
+              return <span key={i} ref={(el) => (wordRefs.current[i] = el)} style={{ display: "block", height: 0 }} />;
+            }
+          }
           return (
             <span
               key={i}

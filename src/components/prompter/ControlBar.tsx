@@ -6,7 +6,7 @@ import type { Settings } from "@/lib/teleprompter-store";
 import {
   Play, Pause, RotateCcw, Maximize, Minimize, FlipHorizontal, FlipVertical,
   Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal, SkipBack, SkipForward, Settings2,
-  Eye, EyeOff,
+  Eye, EyeOff, AlignLeft,
 } from "lucide-react";
 
 type NumericSettingKey = "fontSize" | "lineHeight" | "speed";
@@ -150,6 +150,16 @@ export function ControlBar({
         >
           {settings.lightbox ? <MoveHorizontal className="h-4 w-4" /> : <Rows3 className="h-4 w-4" />}
         </Button>
+        {!settings.lightbox && (
+          <Button
+            size="icon" variant={settings.structuredMode ? "default" : "ghost"}
+            className={quietIconButtonClass}
+            onClick={() => onChange({ structuredMode: !settings.structuredMode })}
+            title="Structured mode — preserve script layout"
+          >
+            <AlignLeft className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {speechSupported && (
