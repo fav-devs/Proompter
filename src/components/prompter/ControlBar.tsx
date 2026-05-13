@@ -27,13 +27,14 @@ interface Props {
   onVoiceSettings?: () => void;
   remoteRole?: "host" | "client" | null;
   onRemote?: () => void;
-  onReload?: () => void;
+  onPush?: () => void;
+  onPull?: () => void;
 }
 
 export function ControlBar({
   settings, playing, onPlay, onReset, onRewind, onAdvance, onFullscreen, isFullscreen,
   onChange, speechSupported, listening, singleRow = false, onVoiceSettings,
-  remoteRole, onRemote, onReload,
+  remoteRole, onRemote, onPush, onPull,
 }: Props) {
   const num = (key: NumericSettingKey, delta: number, min: number, max: number) => {
     const nextValue = Math.min(max, Math.max(min, settings[key] + delta));
@@ -194,12 +195,13 @@ export function ControlBar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        {onReload && remoteRole === "client" && (
-          <Button
-            size="icon" variant="ghost" className={iconButtonClass}
-            onClick={onReload}
-            title="Reload script from host"
-          >
+        {onPush && remoteRole === "host" && (
+          <Button size="icon" variant="ghost" className={iconButtonClass} onClick={onPush} title="Push script to clients">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
+        {onPull && remoteRole === "client" && (
+          <Button size="icon" variant="ghost" className={iconButtonClass} onClick={onPull} title="Pull script from host">
             <RefreshCw className="h-4 w-4" />
           </Button>
         )}

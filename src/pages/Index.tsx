@@ -117,26 +117,16 @@ const Index = () => {
     if (speechError) toast.error(`Mic: ${speechError}`);
   }, [speechError]);
 
-  // Remote sync — host pushes on change + on client ping; client pulls manually
-  const pushNow = useCallback(async () => {
-    if (!remote || remote.role !== "host" || !active) return;
-    try {
-      await fetch(`/api/sync?code=${remote.code}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: active.body }),
-      });
-    } catch { /* ignore */ }
-  }, [remote, active]);
-  useRemoteHost(remote, active?.body ?? "", pushNow);
-  const { reload: reloadFromHost, error: syncError } = useRemoteClient(
+  const { push: pushToClients, error: pushError } = useRemoteHost(remote);
+  const { pull: pullFromHost, error: pullError } = useRemoteClient(
     remote,
     useCallback((body: string) => {
       if (!active) return;
       setScripts((arr) => arr.map((s) => s.id === active.id ? { ...s, body, updatedAt: Date.now() } : s));
     }, [active]),
   );
-  useEffect(() => { if (syncError) toast.error(`Sync: ${syncError}`); }, [syncError]);
+  useEffect(() => { if (pushError) toast.error(`Sync: ${pushError}`); }, [pushError]);
+  useEffect(() => { if (pullError) toast.error(`Sync: ${pullError}`); }, [pullError]);
 
   useEffect(() => {
     if ((settings.followMode || settings.voiceCommandsEnabled) && !speechSupported) {
@@ -362,7 +352,8 @@ const Index = () => {
                 singleRow={!isMobile}
                 remoteRole={remote?.role}
                 onRemote={() => setIsRemoteOpen(true)}
-                onReload={reloadFromHost}
+                onPush={() => pushToClients(active?.body ?? "")}
+                onPull={pullFromHost}
               />
             </div>
           </div>
@@ -481,7 +472,8 @@ const Index = () => {
               onVoiceSettings={() => setIsVoiceSettingsOpen(true)}
               remoteRole={remote?.role}
               onRemote={() => setIsRemoteOpen(true)}
-              onReload={reloadFromHost}
+              onPush={() => pushToClients(active?.body ?? "")}
+                onPull={pullFromHost}
             />
           </div>
 
