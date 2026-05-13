@@ -18,6 +18,7 @@ export type Settings = {
   followHighlight: boolean;
   focusPosition: number;
   lightbox: boolean; // horizontal scrolling mode
+  lightboxScale: number;
   voiceCommandsEnabled: boolean;
 };
 
@@ -31,6 +32,7 @@ export const defaultSettings: Settings = {
   followHighlight: true,
   focusPosition: 38,
   lightbox: false,
+  lightboxScale: 1.4,
   voiceCommandsEnabled: false,
 };
 

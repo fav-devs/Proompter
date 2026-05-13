@@ -146,7 +146,7 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
             transformOrigin: "center center",
             paddingLeft: `${settings.focusPosition}vw`,
             paddingRight: `${100 - settings.focusPosition + 20}vw`,
-            fontSize: settings.fontSize * 1.4,
+            fontSize: settings.fontSize * settings.lightboxScale,
             lineHeight: 1,
             willChange: "transform",
             color: "hsl(var(--secondary))",

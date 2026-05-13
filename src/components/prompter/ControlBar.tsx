@@ -98,6 +98,33 @@ export function ControlBar({
         </Button>
       </div>
 
+      {settings.lightbox && (
+        <div className={groupClass}>
+          <Label className="px-1 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Scale</Label>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={() => onChange({ lightboxScale: Math.max(0.8, Number((settings.lightboxScale - 0.1).toFixed(1))) })}
+            title="Decrease lightbox scale"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </Button>
+          <span className="w-8 text-center font-mono text-[11px] tabular-nums">
+            {settings.lightboxScale.toFixed(1)}
+          </span>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={() => onChange({ lightboxScale: Math.min(3, Number((settings.lightboxScale + 0.1).toFixed(1))) })}
+            title="Increase lightbox scale"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+
       <div className={groupClass}>
         <Button
           size="icon" variant={settings.mirrorH ? "default" : "ghost"}
