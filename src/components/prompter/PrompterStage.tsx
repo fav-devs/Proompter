@@ -161,7 +161,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden rounded-2xl bg-card paper-grain stage-vignette"
+      className="relative h-full w-full overflow-hidden rounded-2xl bg-card paper-grain stage-vignette scroll-mask"
       style={{ boxShadow: "var(--shadow-stage)" }}
     >
       <div
@@ -183,7 +183,6 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
       </div>
       <div
         ref={contentRef}
-        className="scroll-mask"
         style={{
           transform,
           transformOrigin: "center center",
