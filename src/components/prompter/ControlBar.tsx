@@ -6,7 +6,7 @@ import type { Settings } from "@/lib/teleprompter-store";
 import {
   Play, Pause, RotateCcw, Maximize, Minimize, FlipHorizontal, FlipVertical,
   Mic, MicOff, Plus, Minus, Rows3, MoveHorizontal, SkipBack, SkipForward, Settings2,
-  Eye, EyeOff, AlignLeft,
+  Eye, EyeOff, AlignLeft, Radio, RefreshCw,
 } from "lucide-react";
 
 type NumericSettingKey = "fontSize" | "lineHeight" | "speed";
@@ -25,11 +25,15 @@ interface Props {
   listening: boolean;
   singleRow?: boolean;
   onVoiceSettings?: () => void;
+  remoteRole?: "host" | "client" | null;
+  onRemote?: () => void;
+  onReload?: () => void;
 }
 
 export function ControlBar({
   settings, playing, onPlay, onReset, onRewind, onAdvance, onFullscreen, isFullscreen,
   onChange, speechSupported, listening, singleRow = false, onVoiceSettings,
+  remoteRole, onRemote, onReload,
 }: Props) {
   const num = (key: NumericSettingKey, delta: number, min: number, max: number) => {
     const nextValue = Math.min(max, Math.max(min, settings[key] + delta));
@@ -190,6 +194,26 @@ export function ControlBar({
       )}
 
       <div className="ml-auto flex items-center gap-1">
+        {onReload && remoteRole === "client" && (
+          <Button
+            size="icon" variant="ghost" className={iconButtonClass}
+            onClick={onReload}
+            title="Reload script from host"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        )}
+        {onRemote && (
+          <Button
+            size="icon"
+            variant={remoteRole ? "default" : "ghost"}
+            className={iconButtonClass}
+            onClick={onRemote}
+            title={remoteRole ? `Remote: ${remoteRole}` : "Remote sync"}
+          >
+            <Radio className="h-4 w-4" />
+          </Button>
+        )}
         {speechSupported && (
           <Button
             size="icon"

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Globe2, Menu, Sparkles } from "lucide-react";
+import { RemoteModal } from "@/components/prompter/RemoteModal";
+import { useRemoteClient, useRemoteHost, type RemoteState } from "@/lib/remote-sync";
 import { toast } from "sonner";
 
 import { VoiceCommandSettings } from "@/components/VoiceCommandSettings";
@@ -36,6 +38,8 @@ const Index = () => {
   const [mobilePanel, setMobilePanel] = useState("read");
   const [resetTick, setResetTick] = useState(0);
   const [wakeWordPulse, setWakeWordPulse] = useState<string | null>(null);
+  const [remote, setRemote] = useState<RemoteState>(null);
+  const [isRemoteOpen, setIsRemoteOpen] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const wakeWordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const setSpeechCursorRef = useRef<(index: number) => void>(() => {});
@@ -112,6 +116,17 @@ const Index = () => {
   useEffect(() => {
     if (speechError) toast.error(`Mic: ${speechError}`);
   }, [speechError]);
+
+  // Remote sync — host pushes script on change, client polls
+  useRemoteHost(remote, active?.body ?? "");
+  const { reload: reloadFromHost, error: syncError } = useRemoteClient(
+    remote,
+    useCallback((body: string) => {
+      if (!active) return;
+      setScripts((arr) => arr.map((s) => s.id === active.id ? { ...s, body, updatedAt: Date.now() } : s));
+    }, [active]),
+  );
+  useEffect(() => { if (syncError) toast.error(`Sync: ${syncError}`); }, [syncError]);
 
   useEffect(() => {
     if ((settings.followMode || settings.voiceCommandsEnabled) && !speechSupported) {
@@ -335,6 +350,9 @@ const Index = () => {
                 speechSupported={speechSupported}
                 listening={listening}
                 singleRow={!isMobile}
+                remoteRole={remote?.role}
+                onRemote={() => setIsRemoteOpen(true)}
+                onReload={reloadFromHost}
               />
             </div>
           </div>
@@ -451,6 +469,9 @@ const Index = () => {
               speechSupported={speechSupported}
               listening={listening}
               onVoiceSettings={() => setIsVoiceSettingsOpen(true)}
+              remoteRole={remote?.role}
+              onRemote={() => setIsRemoteOpen(true)}
+              onReload={reloadFromHost}
             />
           </div>
 
@@ -473,6 +494,14 @@ const Index = () => {
           )}
         </section>
       </div>
+
+      <RemoteModal
+        open={isRemoteOpen}
+        onOpenChange={setIsRemoteOpen}
+        remote={remote}
+        onConnect={setRemote}
+        onDisconnect={() => setRemote(null)}
+      />
 
       <Dialog open={isVoiceSettingsOpen} onOpenChange={setIsVoiceSettingsOpen}>
         <DialogContent className="max-h-[80vh] max-w-md overflow-y-auto">
