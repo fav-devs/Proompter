@@ -155,6 +155,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
     return -1;
   }, [followWordIndex, settings.followHighlight, settings.followMode, words]);
 
+  const recentPastWordStart = followWordIndex == null ? -1 : Math.max(0, followWordIndex - 18);
   let wIdx = -1;
 
   return (
@@ -205,6 +206,7 @@ export function PrompterStage({ text, settings, playing, followWordIndex, onWord
             settings.followHighlight &&
             followWordIndex != null &&
             wIdx < followWordIndex - 1 &&
+            wIdx >= recentPastWordStart &&
             !isSpace;
           return (
             <span

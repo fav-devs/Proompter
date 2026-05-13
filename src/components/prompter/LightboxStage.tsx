@@ -116,6 +116,7 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
     const sy = settings.mirrorV ? -1 : 1;
     return `translateX(${-offset}px) scale(${sx}, ${sy})`;
   }, [offset, settings.mirrorH, settings.mirrorV]);
+  const recentPastWordStart = followWordIndex == null ? -1 : Math.max(0, followWordIndex - 18);
 
   return (
     <div
@@ -162,7 +163,8 @@ export function LightboxStage({ text, settings, playing, followWordIndex }: Prop
               settings.followMode &&
               settings.followHighlight &&
               followWordIndex != null &&
-              i < followWordIndex - 1;
+              i < followWordIndex - 1 &&
+              i >= recentPastWordStart;
             return (
               <span
                 key={i}
